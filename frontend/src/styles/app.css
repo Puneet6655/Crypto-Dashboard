@@ -1,0 +1,86 @@
+/* 1. Design tokens: change colours, fonts and spacing here, in one place. */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1c1f24;
+  --muted: #5d6470;
+  --border: #d9dde3;
+  --accent: #2563eb;
+  --accent-soft: #e6eefc;
+  --danger: #b42318;
+  --synthetic: #8a5a00;
+  --synthetic-soft: #fff4dc;
+  --live: #116b3a;
+  --live-soft: #e3f5ea;
+  --radius: 8px;
+  --space: 8px; /* every gap is a multiple of this */
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+}
+
+/* 2. Page basics */
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 15px; margin: 0 0 calc(var(--space) * 1.5); }
+
+/* 3. Layout: header, three columns, tabs below */
+.app { max-width: 1280px; margin: 0 auto; padding: calc(var(--space) * 2); display: grid; gap: calc(var(--space) * 2); }
+.layout { display: grid; grid-template-columns: 280px 1fr 280px; gap: calc(var(--space) * 2); align-items: start; }
+
+/* 4. Cards: the white boxes */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: calc(var(--space) * 2); }
+.header { display: flex; justify-content: space-between; align-items: center; }
+
+/* 5. Form controls */
+.controls { display: grid; gap: calc(var(--space) * 1.5); }
+.field { display: grid; gap: 4px; }
+.field-label { font-size: 13px; color: var(--muted); }
+select, input { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 100%; }
+button { font: inherit; cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; border: 0; border-radius: var(--radius); padding: 10px; font-weight: 600; }
+button.primary:disabled { opacity: 0.6; cursor: wait; }
+
+/* 6. Data-mode badge: always visible so nobody mistakes demo data for live data */
+.data-badge { font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border); }
+.data-synthetic { background: var(--synthetic-soft); color: var(--synthetic); border-color: var(--synthetic); }
+.data-live { background: var(--live-soft); color: var(--live); border-color: var(--live); }
+
+/* 7. Graph area and its states */
+.graph { min-height: 320px; }
+.state { display: grid; place-items: center; color: var(--muted); text-align: center; }
+.state.error { color: var(--danger); }
+.node-list { display: flex; flex-wrap: wrap; gap: var(--space); margin-bottom: calc(var(--space) * 2); }
+.node { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius); padding: 6px 10px; text-align: left; }
+.node.selected { border-color: var(--accent); background: var(--accent-soft); }
+.node-type { display: block; font-size: 11px; text-transform: uppercase; color: var(--muted); }
+.edge-list { margin: 0; padding-left: 20px; font-size: 14px; }
+.relation { font-size: 12px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--border); }
+.relation-inferred { border-style: dashed; }
+
+/* 8. Details panel and tabs */
+.details dl, .grid-dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
+.contents { display: contents; }
+dt { color: var(--muted); }
+dd { margin: 0; }
+.tab-row { display: flex; flex-wrap: wrap; gap: var(--space); border-bottom: 1px solid var(--border); padding-bottom: var(--space); margin-bottom: calc(var(--space) * 2); }
+.tab { background: none; border: 1px solid transparent; border-radius: 6px; padding: 6px 12px; color: var(--muted); }
+.tab.active { border-color: var(--accent); background: var(--accent-soft); color: var(--text); font-weight: 600; }
+.plain-list { list-style: none; margin: 0; padding: 0; display: grid; gap: calc(var(--space) * 1.5); }
+.highlight { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+blockquote { margin: 4px 0 0; padding-left: 12px; border-left: 3px solid var(--border); color: var(--muted); }
+.badge { font-size: 12px; background: var(--synthetic-soft); color: var(--synthetic); padding: 0 6px; border-radius: 4px; }
+button.link { background: none; border: 0; color: var(--accent); text-decoration: underline; padding: 0 4px; }
+
+.status-strip { margin-bottom: calc(var(--space) * 2); padding-bottom: calc(var(--space) * 2); border-bottom: 1px solid var(--border); }
+
+/* 9. Small helpers */
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.block { display: block; margin-top: var(--space); }
+.mono { font-family: var(--mono); word-break: break-all; }
+
+/* 10. Narrow screens: stack the three columns */
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+}

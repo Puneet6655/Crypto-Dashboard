@@ -16,3 +16,17 @@ bin-release/
 # Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
 # should NOT be excluded as they contain compiler settings and other important
 # information for Eclipse / Flash Builder.
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+# Secrets and local data
+.env
+*.db
+# Frontend
+node_modules/
+dist/
+# Vercel
+.vercel/
