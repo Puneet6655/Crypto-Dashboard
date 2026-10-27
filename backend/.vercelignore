@@ -1,0 +1,11 @@
+# Keep these out of the deployed API. The dataset alone is ~2 GB, over Vercel's 500 MB limit.
+.venv
+data
+reports
+training
+tests
+models
+requirements-ml.txt
+__pycache__
+.pytest_cache
+.env

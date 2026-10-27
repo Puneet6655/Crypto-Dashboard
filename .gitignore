@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Secrets and local settings
+.env
+.env.local
+*.db
+
+# Frontend
+node_modules/
+dist/
+.vercel/
+
+# Datasets (Elliptic++ etc.): never commit. Put downloads in backend/data/raw/
+backend/data/raw/
+# Trained models and large outputs
+backend/models/
+*.parquet
+*.pkl
+*.joblib
