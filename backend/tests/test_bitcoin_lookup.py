@@ -68,3 +68,65 @@ def test_rate_limit_is_reported_as_429():
 def test_provider_health_reports_tip_height():
     use_fake_provider()
     assert client.get("/api/bitcoin/health").json()["tip_height"] == 800123
+
+class FakeStore:
+    """Records what the routes ask to save, instead of using a real database."""
+
+    enabled = True
+
+    def __init__(self):
+        self.addresses, self.transactions, self.investigations, self.health = [], [], [], []
+
+    def save_address(self, summary):
+        self.addresses.append(summary)
+
+    def save_transactions(self, transactions):
+        self.transactions.extend(transactions)
+
+    def save_investigation(self, result):
+        self.investigations.append(result)
+
+    def save_health(self, health):
+        self.health.append(health)
+
+    def get_investigation(self, investigation_id):
+        found = [r for r in self.investigations if r.investigation_id == investigation_id]
+        return found[0].model_dump(mode="json") if found else None
+
+
+def use_fake_store() -> FakeStore:
+    from app.store import get_store
+
+    store = FakeStore()
+    app.dependency_overrides[get_store] = lambda: store
+    return store
+
+
+def test_lookups_are_saved():
+    use_fake_provider()
+    store = use_fake_store()
+    client.get(f"/api/bitcoin/address/{SYNTHETIC_ADDRESS}")
+    client.get(f"/api/bitcoin/tx/{SYNTHETIC_TXID}")
+    client.get("/api/bitcoin/health")
+    assert store.addresses[0].address == SYNTHETIC_ADDRESS
+    assert store.transactions[0].txid == SYNTHETIC_TXID
+    assert store.health[0].tip_height == 800123
+
+
+def test_failed_lookup_is_not_saved():
+    use_fake_provider()
+    store = use_fake_store()
+    client.get("/api/bitcoin/tx/" + "b" * 64)
+    assert store.transactions == []
+
+
+def test_investigation_is_saved_and_can_be_reopened():
+    use_fake_provider()
+    store = use_fake_store()
+    body = client.post("/api/investigations", json={
+        "mode": "crypto_investigation", "input_type": "bitcoin_txid", "value": SYNTHETIC_TXID, "method": "live_lookup",
+    }).json()
+    assert store.investigations[0].investigation_id == body["investigation_id"]
+    assert store.transactions[0].txid == SYNTHETIC_TXID
+    reopened = client.get(f"/api/investigations/{body['investigation_id']}").json()
+    assert reopened["graph"] == body["graph"]
