@@ -1,0 +1,5 @@
+cd C:\dev\payments-dashboard\backend
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+uvicorn app.main:app --reload

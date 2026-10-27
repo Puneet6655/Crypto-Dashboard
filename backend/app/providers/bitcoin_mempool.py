@@ -74,9 +74,9 @@ class MempoolSpaceProvider(BitcoinProvider):
             provenance=Provenance(provider=self.name, source_url=url, retrieved_at=_now(), data_mode="live"),
         )
 
-    async def get_transaction(self, txid: str) -> TransactionSummary:
-        """Fetch one transaction with its inputs, outputs and confirmation status."""
-        data, url = await self._get_json(f"/tx/{txid}")
+    def _to_tx_summary(self, data: dict, url: str) -> TransactionSummary:
+        """Convert one provider transaction object into our TransactionSummary."""
+        txid = data["txid"]
         status = data.get("status", {})
         confirmed = bool(status.get("confirmed"))
         block_time = status.get("block_time")
@@ -101,6 +101,23 @@ class MempoolSpaceProvider(BitcoinProvider):
             outputs=outputs,
             provenance=Provenance(provider=self.name, source_url=url, retrieved_at=_now(), data_mode="live"),
         )
+
+    async def get_transaction(self, txid: str) -> TransactionSummary:
+        """Fetch one transaction with its inputs, outputs and confirmation status."""
+        data, url = await self._get_json(f"/tx/{txid}")
+        return self._to_tx_summary(data, url)
+
+    async def get_address_transactions(self, address: str, after_txid: str | None = None) -> list[TransactionSummary]:
+        """Fetch one page of an address's transactions, newest first.
+
+        Without after_txid: unconfirmed transactions plus the newest confirmed ones.
+        With after_txid: the next page of confirmed transactions after that txid.
+        """
+        path = f"/address/{address}/txs" if after_txid is None else f"/address/{address}/txs/chain/{after_txid}"
+        data, url = await self._get_json(path)
+        if not isinstance(data, list):
+            raise ProviderError(f"{self.name} returned an unexpected transaction list", 502)
+        return [self._to_tx_summary(item, url) for item in data]
 
     async def health(self) -> ProviderHealth:
         """Ask for the current block height. Never raises: failures are reported in the result."""

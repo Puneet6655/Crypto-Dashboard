@@ -1,0 +1,5 @@
+# Data and model packages (Milestone 4 onwards). Install with:
+#   pip install -r requirements-ml.txt
+-r requirements.txt
+numpy==2.5.3
+pandas==3.0.6
