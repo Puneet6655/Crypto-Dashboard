@@ -1,4 +1,6 @@
 """Entry point. Run with: uvicorn app.main:app --reload"""
+import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 
@@ -6,9 +8,11 @@ from fastapi import Depends, FastAPI
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import bitcoin, investigations
+from app.api.routes import admin, auth, bigquery, bitcoin, cases, indicators, investigations, sources, system_status
+from app.auth.deps import require_viewer
 from app.config import get_settings
 from app.db import NullStore, open_store
+from app.intelligence.refresher import keep_indicators_fresh
 from app.store import get_store
 
 logging.basicConfig(level=logging.INFO)
@@ -16,9 +20,19 @@ logging.basicConfig(level=logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Connect to the database when the server starts and disconnect when it stops."""
-    app.state.store = await run_in_threadpool(open_store, get_settings().database_url)
+    """On start: connect to the database and keep the OFAC/Ransomwhere lists fresh in the background.
+    On stop: disconnect and stop the refresher."""
+    settings = get_settings()
+    app.state.store = await run_in_threadpool(open_store, settings.database_url)
+    refresher = None
+    if settings.indicators_auto_refresh:
+        refresher = asyncio.create_task(
+            keep_indicators_fresh(settings.indicators_dir, settings.indicators_max_age_hours))
     yield
+    if refresher is not None:
+        refresher.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await refresher
     await run_in_threadpool(app.state.store.close)
 
 
@@ -28,12 +42,21 @@ app = FastAPI(title="Payments Intelligence API", version="0.4.0", lifespan=lifes
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().frontend_origins,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
-app.include_router(bitcoin.router)
-app.include_router(investigations.router)
+# Everything except sign-in and the two health checks needs a signed-in user (see app/auth).
+signed_in = [Depends(require_viewer)]
+app.include_router(auth.router)
+app.include_router(bitcoin.router, dependencies=signed_in)
+app.include_router(investigations.router, dependencies=signed_in)
+app.include_router(indicators.router, dependencies=signed_in)
+app.include_router(system_status.router, dependencies=signed_in)
+app.include_router(cases.router)
+app.include_router(sources.router)
+app.include_router(bigquery.router)
+app.include_router(admin.router)
 
 
 @app.get("/api/health")

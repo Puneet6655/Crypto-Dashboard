@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { caseItemAttrs, itemFromNode } from "../cases/caseItems.js";
 
 export const TABS = ["Findings", "Why Flagged?", "Evidence", "Provenance", "Explanation", "Evidence Assessment"];
 
@@ -61,11 +62,15 @@ export default function ResultTabs({ result, active, onTabChange: setActive, hig
                     </button>
                   ))}
                   {" "}· Show in graph:{" "}
-                  {f.entity_ids.map((id) => (
-                    <button key={id} type="button" className="link" onClick={() => onSelect(id)}>
-                      {result.graph.nodes.find((n) => n.id === id)?.label ?? id}
-                    </button>
-                  ))}
+                  {f.entity_ids.map((id) => {
+                    const node = result.graph.nodes.find((n) => n.id === id);
+                    return (
+                      <button key={id} type="button" className="link" onClick={() => onSelect(id)}
+                        {...caseItemAttrs(itemFromNode(node))}>
+                        {node?.label ?? id}
+                      </button>
+                    );
+                  })}
                 </div>
               </li>
             ))}
