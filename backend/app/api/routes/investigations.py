@@ -8,6 +8,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.config import Settings, get_settings
 from app.db import NullStore, run_safely
+from app.intelligence.index import IndicatorIndex, get_indicator_index
 from app.providers.base import BitcoinProvider, ProviderError
 from app.providers.registry import get_bitcoin_provider
 from app.schemas.investigation import InvestigationRequest, InvestigationResult
@@ -31,14 +32,15 @@ async def create_investigation(
     provider: BitcoinProvider = Depends(get_bitcoin_provider),
     settings: Settings = Depends(get_settings),
     store: NullStore = Depends(get_store),
+    indicators: IndicatorIndex = Depends(get_indicator_index),
 ) -> InvestigationResult:
     recorder = RecordingProvider(provider)
     try:
-        result = await run_investigation(request, recorder, settings.max_graph_nodes)
+        result = await run_investigation(request, recorder, settings.max_graph_nodes, indicators)
     except UnsupportedInvestigation as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except ProviderError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+        raise HTTPException(status_code=exc.status_code, detail=exc.message, headers=exc.headers())
     background.add_task(_save_everything, store, recorder, result)
     return result
 

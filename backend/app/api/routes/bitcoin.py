@@ -7,6 +7,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.db import NullStore, run_safely
 from app.providers.base import BitcoinProvider, ProviderError
+from app.providers.failover import FailoverBitcoinProvider
 from app.providers.registry import get_bitcoin_provider
 from app.schemas.bitcoin import AddressSummary, ProviderHealth, TransactionSummary
 from app.store import get_store
@@ -26,6 +27,24 @@ async def provider_health(
     return health
 
 
+@router.get("/providers")
+async def data_sources(
+    check: bool = Query(False, description="Also ask each source for its tip height (one request each)"),
+    provider: BitcoinProvider = Depends(get_bitcoin_provider),
+) -> dict:
+    """Which Bitcoin data sources are configured, which are cooling down, and recent fallbacks."""
+    if isinstance(provider, FailoverBitcoinProvider):
+        return await provider.status(check=check)
+    # A single provider (tests, or a custom setup): report just that one.
+    health = await provider.health() if check else None
+    return {
+        "sources": [{"provider": provider.name, "priority": 1, "ready": True,
+                     "health": health.model_dump(mode="json") if health else None}],
+        "cache_entries": 0,
+        "recent_fallbacks": [],
+    }
+
+
 @router.get("/address/{address}", response_model=AddressSummary)
 async def lookup_address(
     address: str,
@@ -38,7 +57,7 @@ async def lookup_address(
     try:
         summary = await provider.get_address_summary(normalize_address(address))
     except ProviderError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+        raise HTTPException(status_code=exc.status_code, detail=exc.message, headers=exc.headers())
     background.add_task(run_safely, store.save_address, summary)
     return summary
 
@@ -67,6 +86,6 @@ async def lookup_transaction(
     try:
         tx = await provider.get_transaction(txid.strip().lower())
     except ProviderError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+        raise HTTPException(status_code=exc.status_code, detail=exc.message, headers=exc.headers())
     background.add_task(run_safely, store.save_transactions, [tx])
     return tx

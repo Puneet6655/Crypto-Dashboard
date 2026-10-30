@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 import httpx
 
+from app.features.wallet_window import BlockStat
 from app.providers.base import BitcoinProvider, ProviderError
 from app.schemas.bitcoin import (
     ActivityTotals,
@@ -97,6 +98,7 @@ class MempoolSpaceProvider(BitcoinProvider):
             block_height=status.get("block_height"),
             block_time=datetime.fromtimestamp(block_time, tz=timezone.utc) if block_time else None,
             fee_sats=data.get("fee"),
+            weight=data.get("weight"),
             inputs=inputs,
             outputs=outputs,
             provenance=Provenance(provider=self.name, source_url=url, retrieved_at=_now(), data_mode="live"),
@@ -118,6 +120,23 @@ class MempoolSpaceProvider(BitcoinProvider):
         if not isinstance(data, list):
             raise ProviderError(f"{self.name} returned an unexpected transaction list", 502)
         return [self._to_tx_summary(item, url) for item in data]
+
+    async def get_block_stats(self, height: int) -> list[BlockStat]:
+        """Tx count and total fees for up to 15 blocks ending at `height`, newest first.
+
+        Used for the network-context features (see app/features/wallet_window.py).
+        """
+        data, _ = await self._get_json(f"/v1/blocks/{height}")
+        if not isinstance(data, list):
+            raise ProviderError(f"{self.name} returned an unexpected block list", 502)
+        return [
+            BlockStat(
+                height=int(block["height"]),
+                tx_count=int(block["tx_count"]),
+                total_fees_sats=int((block.get("extras") or {}).get("totalFees", 0)),
+            )
+            for block in data
+        ]
 
     async def health(self) -> ProviderHealth:
         """Ask for the current block height. Never raises: failures are reported in the result."""

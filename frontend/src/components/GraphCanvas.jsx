@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import cytoscape from "cytoscape";
 import { LAYOUTS, buildStylesheet, nodeTypeInfo, relationInfo } from "../config/graphStyle.js";
+import { useCases } from "../cases/CasesContext.jsx";
+import { itemFromNode } from "../cases/caseItems.js";
 
 // Turn our API's { nodes, edges } into the list Cytoscape expects:
 // every element is { data: {...} }, and an edge needs "source" and "target".
@@ -79,6 +81,13 @@ export default function GraphCanvas({
     onSelectRef.current = onSelect;
   }, [onSelect]);
 
+  // Right-click a node to add it to a case (same ref trick as onSelect).
+  const { openPicker, canEdit } = useCases();
+  const openPickerRef = useRef(null);
+  useEffect(() => {
+    openPickerRef.current = canEdit ? openPicker : null;
+  }, [openPicker, canEdit]);
+
   // 1. Create the graph when the data arrives, and destroy it when it leaves.
   useEffect(() => {
     const { elements, bundleOf } = toElements(nodes, edges);
@@ -105,6 +114,16 @@ export default function GraphCanvas({
     cy.on("tap", (event) => {
       if (event.target === cy) onSelectRef.current("");
     });
+    // Right-click (or long-press on a touch screen) a node: select it and open "Add to case".
+    cy.on("cxttap", "node", (event) => {
+      const open = openPickerRef.current;
+      if (!open) return;
+      const node = event.target;
+      onSelectRef.current(node.id());
+      const box = containerRef.current.getBoundingClientRect();
+      const item = itemFromNode({ id: node.id(), type: node.data("type"), label: node.data("label") });
+      open(item, { x: box.left + event.renderedPosition.x, y: box.top + event.renderedPosition.y });
+    });
     // Double-click a node to zoom in on it and its neighbours.
     cy.on("dbltap", "node", (event) => {
       cy.animate({ fit: { eles: event.target.closedNeighborhood(), padding: 60 } }, { duration: 300 });
@@ -123,11 +142,13 @@ export default function GraphCanvas({
     cy.on("viewport", () => setTooltip(null)); // hide it while panning or zooming
 
     return () => {
-      // Stop a running layout animation first, or it keeps drawing into a destroyed graph.
+      // Stop a running layout animation first. A stopped "force" layout still finishes on its
+      // next animation frame, so destroy the graph two frames later (leaving the page mid-layout
+      // used to throw "Cannot read properties of null").
       layoutRef.current?.stop();
       cy.stop();
-      cy.destroy();
       cyRef.current = null;
+      requestAnimationFrame(() => requestAnimationFrame(() => cy.destroy()));
     };
   }, [nodes, edges, cyRef]);
 
@@ -205,6 +226,8 @@ export default function GraphCanvas({
         onKeyDown={(event) => {
           if (event.key === "Escape") onSelect("");
         }}
+        // The graph's own right-click menu replaces the browser's.
+        onContextMenu={(event) => canEdit && event.preventDefault()}
       />
       {tooltip && (
         <div className="graph-tooltip" style={{ left: tooltip.x + 14, top: tooltip.y + 14 }} role="tooltip">
@@ -226,7 +249,7 @@ function describe(el) {
     const lines = [`${el.degree()} link(s)`];
     if (el.data("status")) lines.push(`Status: ${el.data("status")}`);
     if (el.data("fee_sats") != null) lines.push(`Fee: ${el.data("fee_sats").toLocaleString()} sats`);
-    lines.push("Click for details, double-click to zoom");
+    lines.push("Click for details, double-click to zoom, right-click to add to a case");
     return { kind: info.label, title: el.data("label"), lines };
   }
   const info = relationInfo(el.data("relation"));

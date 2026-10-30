@@ -49,6 +49,7 @@ class TransactionSummary(BaseModel):
     block_height: int | None
     block_time: datetime | None
     fee_sats: int | None
+    weight: int | None = Field(default=None, description="Weight units (vsize = (weight + 3) // 4); None if unknown")
     inputs: list[TxEndpoint]
     outputs: list[TxEndpoint]
     provenance: Provenance
