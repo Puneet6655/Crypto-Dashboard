@@ -1,5 +1,10 @@
 # Elliptic++ features vs live mempool.space data
 
+> Update: practical fixes 1-3 below are implemented. `app/features/wallet_window.py` is the one
+> feature function for both sides; `training/pull_bigquery.py` rebuilds the features for every
+> Elliptic++ wallet from BigQuery's full chain data with the same window and cap as live lookups.
+> See `reports/bigquery_training_dataset.md`.
+
 Short version: a model trained on Elliptic++ wallet features will give unreliable
 scores on addresses looked up live through mempool.space, unless the features are
 rebuilt the same way on both sides. Treat any such score as offline-only until it

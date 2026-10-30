@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { nodeTypeInfo, relationInfo } from "../config/graphStyle.js";
+import { caseItemAttrs, itemFromNode } from "../cases/caseItems.js";
+import { AddToCaseButton } from "./AddToCaseMenu.jsx";
 
 // Right column: details for whatever the analyst clicked, a node or a link.
 // Every related item is a button, so you can walk the graph from here too.
@@ -48,8 +50,11 @@ function NodeDetails({ node, result, onSelect, onEvidenceClick }) {
       <h2>
         <span className="swatch" style={{ background: info.color }} /> {info.label}
       </h2>
-      <p className="entity-label">{node.label}</p>
+      <p className="entity-label" {...caseItemAttrs(itemFromNode(node))}>{node.label}</p>
       <CopyableId id={node.id} />
+      <div className="details-actions">
+        <AddToCaseButton item={itemFromNode(node)} />
+      </div>
 
       <dl>
         {Object.entries(node.details ?? {}).map(([key, value]) => (
@@ -83,7 +88,14 @@ function NodeDetails({ node, result, onSelect, onEvidenceClick }) {
         {neighbours.map(({ key, otherId, outgoing, links: group }) => (
           <li key={key}>
             <span className="muted">{outgoing ? "→" : "←"}</span>{" "}
-            <button type="button" className="link" onClick={() => onSelect(otherId)}>{labelOf(otherId)}</button>
+            <button
+              type="button"
+              className="link"
+              onClick={() => onSelect(otherId)}
+              {...caseItemAttrs(itemFromNode(nodes.find((n) => n.id === otherId)))}
+            >
+              {labelOf(otherId)}
+            </button>
             <div className="small muted">
               {group.length === 1 ? group[0].label : `${group.length} links, e.g. ${group[0].label}`}
             </div>

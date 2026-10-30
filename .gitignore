@@ -21,3 +21,9 @@ backend/models/
 *.parquet
 *.pkl
 *.joblib
+
+# Cloud credentials (Google service-account keys etc.): never commit
+backend/data/*.json
+*service-account*.json
+gcp-key*.json
+backend/data/processed/
