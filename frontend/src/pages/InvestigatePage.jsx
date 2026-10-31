@@ -70,6 +70,10 @@ function investigatedItem(result, form) {
   if (!value) return null;
   if (type === "bitcoin_address") return { item_type: "address", value, network: "bitcoin", label: null, source: result.investigation_id };
   if (type === "bitcoin_txid") return { item_type: "transaction", value: value.toLowerCase(), network: "bitcoin", label: null, source: result.investigation_id };
+  for (const chain of ["ethereum", "base"]) {
+    if (type === `${chain}_address`) return { item_type: "address", value: value.toLowerCase(), network: chain, label: null, source: result.investigation_id };
+    if (type === `${chain}_txid`) return { item_type: "transaction", value: value.toLowerCase(), network: chain, label: null, source: result.investigation_id };
+  }
   if (type === "url_domain") return { item_type: "domain", value, network: "web", label: null, source: result.investigation_id };
   if (type === "x402_payment_id") return { item_type: "payment", value, network: "other", label: null, source: result.investigation_id };
   return null;

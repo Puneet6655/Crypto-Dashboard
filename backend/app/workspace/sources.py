@@ -34,6 +34,14 @@ DEFAULT_SOURCES: list[dict] = [
         "citation": "Blockstream, Esplora block explorer.",
     },
     {
+        "name": "Etherscan API V2",
+        "category": "Live blockchain data",
+        "url": "https://docs.etherscan.io/",
+        "used_for": "Live Ethereum address and transaction lookups (balances, transactions, ERC-20 transfers).",
+        "licence": "Free API key: 3 calls per second, 100,000 per day; Etherscan terms of service apply.",
+        "citation": "Etherscan, Ethereum blockchain explorer API (etherscan.io).",
+    },
+    {
         "name": "OFAC Specially Designated Nationals (SDN) list",
         "category": "Sanctions and threat intelligence",
         "url": "https://sanctionssearch.ofac.treas.gov/",
@@ -104,13 +112,33 @@ def ensure_seeded(pool: ConnectionPool) -> None:
             "INSERT INTO app_meta (key, value) VALUES ('sources_seeded', now()::text) ON CONFLICT DO NOTHING RETURNING key"
         ).fetchone()
         if not first_time:
+            _add_later_defaults(conn)
             return
+        conn.execute("INSERT INTO app_meta (key, value) SELECT 'source_added:' || name, now()::text "
+                     "FROM unnest(%s::text[]) AS name ON CONFLICT DO NOTHING", (list(ADDED_LATER),))
         with conn.cursor() as cur:
             cur.executemany(
                 """INSERT INTO data_sources (name, category, url, used_for, licence, citation, position)
                    VALUES (%(name)s, %(category)s, %(url)s, %(used_for)s, %(licence)s, %(citation)s, %(position)s)""",
                 [{**source, "position": index} for index, source in enumerate(DEFAULT_SOURCES)],
             )
+
+
+# Defaults added after a database may already have been seeded. Each is added once; if an admin
+# deletes it afterwards it stays deleted.
+ADDED_LATER = ("Etherscan API V2",)
+
+
+def _add_later_defaults(conn) -> None:
+    for name in ADDED_LATER:
+        first = conn.execute("INSERT INTO app_meta (key, value) VALUES (%s, now()::text) ON CONFLICT DO NOTHING "
+                             "RETURNING key", (f"source_added:{name}",)).fetchone()
+        if first:
+            source = next(s for s in DEFAULT_SOURCES if s["name"] == name)
+            conn.execute(
+                """INSERT INTO data_sources (name, category, url, used_for, licence, citation, position)
+                   VALUES (%(name)s, %(category)s, %(url)s, %(used_for)s, %(licence)s, %(citation)s,
+                           (SELECT coalesce(max(position), 0) + 1 FROM data_sources))""", source)
 
 
 def list_sources(pool: ConnectionPool) -> list[dict]:

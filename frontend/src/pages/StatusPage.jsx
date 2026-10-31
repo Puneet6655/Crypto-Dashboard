@@ -5,13 +5,15 @@ import PageHeader, { formatDate, timeAgo } from "../components/PageHeader.jsx";
 import Icon from "../components/Icon.jsx";
 
 const AUTO_REFRESH_SECONDS = 60;
-const PROVIDER_NAMES = { mempool: "mempool.space", blockstream: "blockstream.info" };
+const PROVIDER_NAMES = { mempool: "mempool.space", blockstream: "blockstream.info", etherscan: "etherscan.io", alchemy: "alchemy.com" };
 
 // Is everything the dashboard depends on working right now?
 export default function StatusPage() {
   const api = useApi("/api/health");
   const db = useApi("/api/status/database");
   const providers = useApi("/api/bitcoin/providers?check=true");
+  const ethProviders = useApi("/api/ethereum/providers?check=true");
+  const baseProviders = useApi("/api/base/providers?check=true");
   const history = useApi("/api/status/provider-history?limit=48");
   const lists = useApi("/api/indicators/status");
   const bigquery = useApi("/api/bigquery/status");
@@ -20,7 +22,7 @@ export default function StatusPage() {
   async function checkAll() {
     // Saves one provider health check, which the history strip below shows.
     await apiFetch("/api/bitcoin/health").catch(() => null);
-    await Promise.all([api.reload(), db.reload(), providers.reload(), lists.reload(), bigquery.reload()]);
+    await Promise.all([api.reload(), db.reload(), providers.reload(), ethProviders.reload(), baseProviders.reload(), lists.reload(), bigquery.reload()]);
     history.reload();
   }
 
@@ -85,9 +87,12 @@ export default function StatusPage() {
           {providers.error && <p className="error-text small">{providers.error}</p>}
           {providers.data && (
             <>
+              <div className="small muted">Bitcoin</div>
               <div className="provider-list">
                 {providers.data.sources.map((s) => <ProviderRow key={s.provider} source={s} />)}
               </div>
+              <EvmSources title="Ethereum" query={ethProviders} />
+              <EvmSources title="Base" query={baseProviders} />
               <HealthStrip rows={history.data ?? []} />
               {providers.data.recent_fallbacks?.length > 0 && (
                 <details className="fallbacks">
@@ -104,6 +109,8 @@ export default function StatusPage() {
               )}
               <p className="small muted">
                 mempool.space answers first; blockstream.info takes over when it is rate limited or down.
+                Ethereum lookups use etherscan.io (3 calls per second, 100,000 a day). alchemy.com is the Ethereum
+                backup and the Base source once ALCHEMY_ENABLED is switched on.
                 {providers.data.cache_entries > 0 && ` ${providers.data.cache_entries} recent answers cached.`}
               </p>
             </>
@@ -170,6 +177,22 @@ function StatusCard({ icon, title, state, wide, children }) {
       </div>
       {children}
     </section>
+  );
+}
+
+// The sources for one EVM chain, or why there are none (no API key).
+function EvmSources({ title, query }) {
+  return (
+    <>
+      <div className="small muted">{title}</div>
+      {query.data?.configured ? (
+        <div className="provider-list">
+          {query.data.sources.map((s) => <ProviderRow key={s.provider} source={s} />)}
+        </div>
+      ) : (
+        <p className="small muted">{query.error ?? query.data?.detail ?? "Checking..."}</p>
+      )}
+    </>
   );
 }
 
