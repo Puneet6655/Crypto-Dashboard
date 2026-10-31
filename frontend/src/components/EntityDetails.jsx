@@ -61,7 +61,14 @@ function NodeDetails({ node, result, onSelect, onEvidenceClick }) {
         {Object.entries(node.details ?? {}).map(([key, value]) => (
           <div key={key} className="contents">
             <dt>{key.replaceAll("_", " ")}</dt>
-            <dd>{value === null ? "none" : typeof value === "number" ? value.toLocaleString() : String(value)}</dd>
+            <dd>
+              {value === null ? "none"
+                : typeof value === "number" ? value.toLocaleString()
+                : Array.isArray(value) ? (
+                  // e.g. every website list that matched, with its licence
+                  <ul className="compact-list">{value.map((item) => <li key={String(item)}>{String(item)}</li>)}</ul>
+                ) : String(value)}
+            </dd>
           </div>
         ))}
         <dt>Data</dt>

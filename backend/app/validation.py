@@ -76,3 +76,43 @@ def is_solana_signature(value: str) -> bool:
     """A Solana transaction signature: base58 that decodes to 64 bytes (usually 87 or 88 characters)."""
     value = value.strip()
     return 64 <= len(value) <= 90 and _base58_length(value) == 64
+
+
+# Websites: a host name of dot-separated labels (letters, digits, hyphens), optional scheme and path.
+_DOMAIN_LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
+
+
+def split_url(value: str) -> tuple[str, str] | None:
+    """(host, path) of a URL or bare domain, or None if it has no usable host name.
+
+    The host is lower case and in its ASCII (punycode) form, without "www." or a port, so
+    "https://WWW.Exämple.com:443/login/" gives ("xn--exmple-cua.com", "/login").
+    """
+    from urllib.parse import urlsplit
+
+    text = value.strip()
+    if not text or any(c.isspace() for c in text):
+        return None
+    if "://" not in text:
+        text = "http://" + text
+    try:
+        parts = urlsplit(text)
+        host = (parts.hostname or "").rstrip(".")
+        host = host.encode("idna").decode("ascii").lower()
+    except (ValueError, UnicodeError):
+        return None
+    if host.startswith("www."):
+        host = host[4:]
+    labels = host.split(".")
+    if len(labels) < 2 or not all(_DOMAIN_LABEL.match(label) for label in labels) or labels[-1].isdigit():
+        return None
+    path = parts.path.rstrip("/")
+    if parts.query:
+        path += "?" + parts.query
+    return host, path
+
+
+def normalize_domain(value: str) -> str | None:
+    """Just the host of split_url, or None."""
+    split = split_url(value)
+    return split[0] if split else None
