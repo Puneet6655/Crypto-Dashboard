@@ -1,6 +1,6 @@
 """Settings read from environment variables, with safe local defaults."""
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -29,6 +29,19 @@ class Settings:
     indicators_dir: Path = BACKEND_DIR / "data" / "raw" / "indicators"
     indicators_auto_refresh: bool = True
     indicators_max_age_hours: float = 24.0
+    # Ethereum lookups (Etherscan API V2). Empty key = Ethereum lookups are switched off.
+    # repr=False keeps the key out of logs and error pages that print the settings.
+    etherscan_api_key: str | None = field(default=None, repr=False)
+    etherscan_base_url: str = "https://api.etherscan.io/v2/api"
+    eth_chain_id: int = 1  # Ethereum mainnet (Base, 8453, is not in Etherscan's free plan)
+    # Alchemy: backup for Ethereum and the only source for Base. The endpoint URL contains the key.
+    alchemy_api_key: str | None = field(default=None, repr=False)
+    alchemy_endpoint: str | None = field(default=None, repr=False)
+    # Off until the user approves using Alchemy (2026-10-31): the key alone does not switch it on.
+    alchemy_enabled: bool = False
+    # Live alerts over Alchemy's WebSocket for case and OFAC addresses (needs alchemy_enabled).
+    live_alerts_enabled: bool = True
+    live_alerts_watch_ofac: bool = True
 
 
 def _provider_list(value: str) -> tuple[str, ...]:
@@ -63,4 +76,22 @@ def get_settings() -> Settings:
         indicators_dir=Path(os.getenv("INDICATORS_DIR") or BACKEND_DIR / "data" / "raw" / "indicators"),
         indicators_auto_refresh=os.getenv("INDICATORS_AUTO_REFRESH", "true").strip().lower() not in ("0", "false", "no"),
         indicators_max_age_hours=float(os.getenv("INDICATORS_MAX_AGE_HOURS", "24")),
+        etherscan_api_key=(os.getenv("ETHERSCAN_API_KEY") or "").strip() or None,
+        etherscan_base_url=os.getenv("ETHERSCAN_BASE_URL", "https://api.etherscan.io/v2/api").rstrip("/"),
+        eth_chain_id=int(os.getenv("ETH_CHAIN_ID", "1")),
+        **_alchemy_settings(os.getenv("ALCHEMY_API_KEY"), os.getenv("ALCHEMY_ENDPOINT")),
+        alchemy_enabled=os.getenv("ALCHEMY_ENABLED", "false").strip().lower() in ("1", "true", "yes"),
+        live_alerts_enabled=os.getenv("LIVE_ALERTS_ENABLED", "true").strip().lower() not in ("0", "false", "no"),
+        live_alerts_watch_ofac=os.getenv("LIVE_ALERTS_WATCH_OFAC", "true").strip().lower() not in ("0", "false", "no"),
     )
+
+
+def _alchemy_settings(key: str | None, endpoint: str | None) -> dict:
+    """Accept the key, the endpoint (https://eth-mainnet.g.alchemy.com/v2/<key>), or both."""
+    key = (key or "").strip() or None
+    endpoint = (endpoint or "").strip().rstrip("/") or None
+    if endpoint and "/v2/" in endpoint and not key:
+        key = endpoint.rsplit("/v2/", 1)[1] or None
+    if endpoint and key and endpoint.endswith("/v2"):
+        endpoint = f"{endpoint}/{key}"
+    return {"alchemy_api_key": key, "alchemy_endpoint": endpoint}
