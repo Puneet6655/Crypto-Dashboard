@@ -1,4 +1,5 @@
-"""Exact-match screening of investigation addresses against the OFAC and Ransomwhere snapshots.
+"""Exact-match screening of investigation addresses against the OFAC, Ransomwhere and CryptoScamDB
+snapshots, and of websites against the CryptoScamDB blacklist and whitelist.
 
 The output is indicators (did the rule match?), findings for each match, and one evidence item per
 list naming the snapshot that was checked. A non-match only means "not in this snapshot".
@@ -15,10 +16,15 @@ from app.schemas.investigation import Evidence, Finding, Indicator
 METHOD_VERSION = "exact_list_match_v1"
 # (source id, rule prefix) per chain, in the order they are reported.
 CHECKS = {
-    "bitcoin": (("ofac_xbt", "ofac"), ("ransomwhere", "ransomwhere")),
-    "ethereum": (("ofac_eth", "ofac"),),
-    "base": (("ofac_eth", "ofac"),),  # OFAC lists Ethereum-format addresses without naming the chain
+    "bitcoin": (("ofac_xbt", "ofac"), ("ransomwhere", "ransomwhere"), ("cryptoscamdb_blacklist", "cryptoscamdb")),
+    "ethereum": (("ofac_eth", "ofac"), ("cryptoscamdb_blacklist", "cryptoscamdb")),
+    # OFAC lists Ethereum-format addresses without naming the chain; CryptoScamDB says only "ETH".
+    "base": (("ofac_eth", "ofac"), ("cryptoscamdb_blacklist", "cryptoscamdb")),
     "solana": (("ofac_sol", "ofac"),),
+}
+# What an address match means, where it differs from the list's own label (which is about websites).
+ADDRESS_LABELS = {
+    "cryptoscamdb_blacklist": "reported as a payment address of a scam website (CryptoScamDB)",
 }
 BITCOIN_CHECKS = CHECKS["bitcoin"]
 NOT_SAFE = "Not being listed does not mean an address is safe."
@@ -72,7 +78,8 @@ def screen_addresses(index: IndicatorIndex, chain: str, network: str, subject: s
         evidence_id = f"e{evidence_no}"
         evidence_no += 1
         meta = loaded.meta
-        excerpt = f"{len(loaded.records):,} addresses; sha256 {str(meta.get('sha256'))[:12]}"
+        count = len(loaded.site_addresses) if loaded.source.chain == "web" else len(loaded.records)
+        excerpt = f"{count:,} addresses; sha256 {str(meta.get('sha256'))[:12]}"
         if meta.get("list_updated_at"):
             excerpt += f"; list last changed {meta['list_updated_at']}"
         if loaded.source.note:
@@ -82,6 +89,7 @@ def screen_addresses(index: IndicatorIndex, chain: str, network: str, subject: s
             retrieved_at=loaded.retrieved_at, method_version=METHOD_VERSION, excerpt=excerpt))
         out.source_timestamps[loaded.source.title] = loaded.retrieved_at
         snapshot = f"{loaded.source.title} {loaded.snapshot_label()}"
+        label = ADDRESS_LABELS.get(source_id, loaded.source.label)
 
         def record_hits(hits: list[tuple[str, Hit]], title: str) -> None:
             nonlocal finding_no
@@ -96,7 +104,7 @@ def screen_addresses(index: IndicatorIndex, chain: str, network: str, subject: s
             hits = [(subject, h) for h in index.lookup(subject, [source_id])]
             if hits:
                 family = hits[0][1].family
-                record_hits(hits, f"Address is {loaded.source.label}" + (f" ({family})" if family else ""))
+                record_hits(hits, f"Address is {label}" + (f" ({family})" if family else ""))
                 reason = f"{_describe(*hits[0])} is in the {snapshot}."
             else:
                 reason = f"Not in the {snapshot}. {NOT_SAFE}"
@@ -114,7 +122,7 @@ def screen_addresses(index: IndicatorIndex, chain: str, network: str, subject: s
                 who = f"{len(hits)} linked addresses are" if many else "1 linked address is"
             else:
                 who = f"{len(hits)} addresses in this transaction are" if many else "1 address in this transaction is"
-            record_hits(hits, f"{who} {loaded.source.label}")
+            record_hits(hits, f"{who} {label}")
             reason = f"{len(hits)} of {len(others):,} {scope} are in the {snapshot}: {names}."
         else:
             reason = f"None of the {len(others):,} {scope} is in the {snapshot}. {NOT_SAFE}"

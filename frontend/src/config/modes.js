@@ -43,20 +43,20 @@ export const METHODS = [
     runsOn: "server",
   },
   {
+    id: "rules_v1",
+    label: "Indicator rules (scam-website lists, OFAC, Ransomwhere)",
+    modes: ["scam_early_warning", "crypto_investigation"],
+    inputTypes: ["url_domain", "bitcoin_address"],
+    status: "ready",
+    runsOn: "server",
+  },
+  {
     id: "fixture_review",
     label: "Demo case review (synthetic fixture)",
     modes: ["scam_early_warning", "crypto_investigation", "x402"],
     inputTypes: ["url_domain", "bitcoin_address", "bitcoin_txid", "x402_payment_id"],
     status: "ready",
     runsOn: "browser",
-  },
-  {
-    id: "rules_v1",
-    label: "Indicator rules (OFAC, scam domains)",
-    modes: ["scam_early_warning", "crypto_investigation"],
-    inputTypes: ["url_domain", "bitcoin_address"],
-    status: "planned",
-    reason: "from Milestone 7",
   },
   {
     id: "graph_measures",

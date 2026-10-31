@@ -124,7 +124,7 @@ export default function StatusPage() {
             <div className="table-wrap">
               <table className="table">
                 <thead>
-                  <tr><th>List</th><th className="num">Addresses</th><th>Source last changed</th><th>Downloaded</th><th>State</th></tr>
+                  <tr><th>List</th><th className="num">Entries</th><th>Source last changed</th><th>Downloaded</th><th>State</th></tr>
                 </thead>
                 <tbody>
                   {lists.data.map((l) => (
@@ -132,6 +132,7 @@ export default function StatusPage() {
                       <td>
                         <a href={l.url} target="_blank" rel="noreferrer">{l.title}</a>
                         {l.note && <div className="small muted">{l.note}</div>}
+                        {l.licence && <div className="small muted">Licence: {l.licence}{l.use_for_training === false ? " · not used for training" : ""}</div>}
                       </td>
                       <td className="num">{l.record_count?.toLocaleString() ?? "—"}</td>
                       <td title={l.list_updated_at ?? ""}>{formatDate(l.list_updated_at)}</td>

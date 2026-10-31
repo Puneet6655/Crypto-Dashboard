@@ -2,13 +2,15 @@
 
 For every source in sources.SOURCES the folder holds:
 
-* <id>.json       the file exactly as downloaded
+* <id>.json       the file exactly as downloaded (.yaml for CryptoScamDB, .txt for Phishing.Database,
+                  .zip for Tranco). Two lists cut from one file (MetaMask, Polkadot) each keep a copy.
 * <id>.meta.json  where and when it came from, its SHA-256, record count and the list's own
                   update date (newest commit for the OFAC lists, newest submission for Ransomwhere)
 
 A new download replaces the old one only if it parses and has at least half as many records as
 before; otherwise the old snapshot stays and the refresh reports why. After each refresh,
-bitcoin_labels.csv lists every Bitcoin address with its source, family and dates (for training).
+bitcoin_labels.csv lists every Bitcoin address with its source, family and dates (for training),
+leaving out lists whose licence does not allow that (CryptoScamDB).
 """
 from __future__ import annotations
 
@@ -23,7 +25,7 @@ from pathlib import Path
 
 import httpx
 
-from app.intelligence.sources import SOURCES, IndicatorSource, Record, SnapshotRejected
+from app.intelligence.sources import SOURCES, IndicatorSource, Record, SiteList, SnapshotRejected
 
 log = logging.getLogger("app.intelligence")
 
@@ -47,8 +49,8 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def raw_path(folder: Path, source_id: str) -> Path:
-    return folder / f"{source_id}.json"
+def raw_path(folder: Path, source_id: str, extension: str = "json") -> Path:
+    return folder / f"{source_id}.{extension}"
 
 
 def meta_path(folder: Path, source_id: str) -> Path:
@@ -64,7 +66,7 @@ def read_meta(folder: Path, source_id: str) -> dict | None:
 
 def load_records(folder: Path, source: IndicatorSource) -> list[Record]:
     """Parse a saved snapshot again (raises OSError or ValueError if it is missing or broken)."""
-    return source.parse(json.loads(raw_path(folder, source.id).read_bytes()))
+    return source.parse(source.decode(raw_path(folder, source.id, source.extension).read_bytes()))
 
 
 def age_hours(meta: dict | None, now: datetime | None = None) -> float | None:
@@ -103,6 +105,8 @@ def _list_updated_at(client: httpx.Client, source: IndicatorSource, records: lis
             return response.json()[0]["commit"]["committer"]["date"]
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
             return None  # GitHub's API is rate limited; the snapshot is still usable without the date
+    if isinstance(records, SiteList):
+        return None
     listed = [r.listed_at for r in records if r.listed_at]
     return _iso(max(listed)) if listed else None
 
@@ -114,9 +118,10 @@ def refresh(folder: Path, source_ids: list[str] | None = None, client: httpx.Cli
     own_client = client is None
     client = client or httpx.Client(timeout=60, follow_redirects=True, headers={"User-Agent": USER_AGENT})
     results = []
+    bodies: dict[str, bytes] = {}  # url -> body, so a file shared by two lists is downloaded once
     try:
         for source_id in source_ids or list(SOURCES):
-            results.append(_refresh_one(folder, SOURCES[source_id], client, force))
+            results.append(_refresh_one(folder, SOURCES[source_id], client, force, bodies))
     finally:
         if own_client:
             client.close()
@@ -125,12 +130,16 @@ def refresh(folder: Path, source_ids: list[str] | None = None, client: httpx.Cli
     return results
 
 
-def _refresh_one(folder: Path, source: IndicatorSource, client: httpx.Client, force: bool) -> RefreshResult:
+def _refresh_one(folder: Path, source: IndicatorSource, client: httpx.Client, force: bool,
+                 bodies: dict[str, bytes] | None = None) -> RefreshResult:
+    bodies = {} if bodies is None else bodies
     try:
-        response = client.get(source.url)
-        response.raise_for_status()
-        body = response.content
-        records = source.parse(json.loads(body))
+        if source.url not in bodies:
+            response = client.get(source.url)
+            response.raise_for_status()
+            bodies[source.url] = response.content
+        body = bodies[source.url]
+        records = source.parse(source.decode(body))
     except SnapshotRejected as exc:
         log.warning("Kept the old %s snapshot: %s", source.id, exc)
         return RefreshResult(source.id, "rejected", f"Unexpected format: {exc}")
@@ -141,7 +150,7 @@ def _refresh_one(folder: Path, source: IndicatorSource, client: httpx.Client, fo
     old = read_meta(folder, source.id)
     old_count = (old or {}).get("record_count") or 0
     if not force and old_count and len(records) < MIN_SHARE_OF_PREVIOUS * old_count:
-        detail = f"New list has {len(records)} addresses, the saved one {old_count}; kept the saved one (use --force)"
+        detail = f"New list has {len(records)} entries, the saved one {old_count}; kept the saved one (use --force)"
         log.warning("%s: %s", source.id, detail)
         return RefreshResult(source.id, "rejected", detail, len(records))
 
@@ -166,18 +175,19 @@ def _refresh_one(folder: Path, source: IndicatorSource, client: httpx.Client, fo
     }
     meta["first_retrieved_at"] = meta["first_retrieved_at"] or meta["retrieved_at"]
     if not unchanged:
-        _write_atomic(raw_path(folder, source.id), body)
+        _write_atomic(raw_path(folder, source.id, source.extension), body)
     _write_atomic(meta_path(folder, source.id), json.dumps(meta, indent=2).encode("utf-8"))
     status = "unchanged" if unchanged else "updated"
     change = "" if not old_count or unchanged else f" (was {old_count})"
-    return RefreshResult(source.id, status, f"{len(records)} addresses{change}", len(records))
+    unit = "websites" if source.chain == "web" else "addresses"
+    return RefreshResult(source.id, status, f"{len(records)} {unit}{change}", len(records))
 
 
 def write_labels_csv(folder: Path) -> Path | None:
     """One row per (Bitcoin address, source) from the saved snapshots, for the training pipeline."""
     rows = []
     for source in SOURCES.values():
-        if source.chain != "bitcoin":
+        if source.chain != "bitcoin" or not source.use_for_training:
             continue
         meta = read_meta(folder, source.id)
         try:

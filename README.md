@@ -66,18 +66,35 @@ These need `ALCHEMY_ENABLED=true` and `ALCHEMY_API_KEY` in `backend/.env`.
 
 With `ALCHEMY_ENABLED=true` (and Solana enabled for the app in Alchemy's dashboard), Crypto Investigation also accepts Solana addresses and transaction signatures. An address investigation reads the newest 1,000 signatures (one call, 40 compute units) and the newest 40 transactions in full (40 each, about 1,700 in all), then shows SOL and SPL token transfers in the graph and screens every counterparty against the OFAC list of sanctioned Solana addresses. Token transfers are drawn between the wallets that own the token accounts. Amounts and counterparties come from those 40 transactions; counts and dates use all signatures. Clicking a Solana address shows its SOL and token balances. Swaps and other program calls appear only as the plain transfers they make. API: `GET /api/solana/address/{address}`, `/address/{address}/signatures`, `/address/{address}/tokens`, `/tx/{signature}`, `/providers`.
 
-## Sanctions and ransomware lists
+## Sanctions, ransomware and scam-website lists
 
 The backend downloads these public lists into `backend/data/raw/indicators/` (gitignored) on start, then re-checks hourly and refreshes any list older than a day:
 
 - OFAC sanctioned addresses for Bitcoin, Ethereum-format and Solana (0xB10C's nightly extraction of OFAC's SDN list)
 - Ransomwhere ransomware payment addresses (Bitcoin; mostly 2016-2021, newest submission October 2024)
+- CryptoScamDB blacklist of scam and phishing websites (about 9,900, with about 4,000 payment addresses they used) and whitelist of genuine crypto websites (about 90), from github.com/CryptoScamDB. **No licence**: the data is only downloaded for local lookups. Do not commit it, copy it into reports or use it for training. The blacklist was last changed in June 2022 and the whitelist in April 2021, so newer scams are missing. Needs PyYAML (in `requirements.txt`).
+- Newer scam-website lists (counts from 31 October 2026):
+  - MetaMask eth-phishing-detect (DBAD Public License 1.2): phishing blacklist (about 114,000 sites plus 1,000 single pages on sites.google.com) and whitelist (57 names MetaMask reviewed and exempts from its look-alike check, plus the 8 names it checks look-alikes against). One 3.3 MB file.
+  - ScamSniffer (GPL-3.0): about 344,000 crypto scam domains, published with a 7-day delay (9.1 MB).
+  - Polkadot{.js} phishing (Apache-2.0): deny list of about 54,000 sites, and an allow list of 29 shared hosting platforms such as github.io and vercel.app (1.4 MB).
+  - Phishing.Database (MIT): about 386,000 active phishing domains of every kind, not crypto-specific, so weighted lower (11 MB).
+  - Tranco top 100,000 sites (a 9.7 MB zip of the top million): popularity only, never proof a site is safe. Its inputs include CC BY-NC data, so internal, non-commercial use only.
 
-Each list is saved with a `.meta.json` file (URL, download time, SHA-256, address count, when the list itself last changed). A download that fails, has the wrong shape or loses more than half its addresses is rejected and the previous copy is kept. `bitcoin_labels.csv` in the same folder lists every Bitcoin address with its source, family and dates, for training.
+  None of the website lists goes into training labels. Together they hold about 1 million names, which take about 120 MB of memory once loaded.
 
-Every investigation checks each address in its graph for an exact match ("Why Flagged?" tab). Matches appear as findings with the list snapshot as evidence. No match only means "not in this snapshot", not "safe".
+Each list is saved with a `.meta.json` file (URL, download time, SHA-256, address count, when the list itself last changed). A download that fails, has the wrong shape or loses more than half its addresses is rejected and the previous copy is kept. `bitcoin_labels.csv` in the same folder lists every Bitcoin address with its source, family and dates, for training (CryptoScamDB addresses are left out because of the missing licence).
 
-From `backend/`: `..\.venv\Scripts\python.exe -m app.intelligence refresh` (or `status`, or `check <address>`). API: `GET /api/indicators/status`, `GET /api/indicators/check/{address}`.
+Every investigation checks each address in its graph for an exact match ("Why Flagged?" tab). Matches appear as findings with the list snapshot as evidence. No match only means "not in this snapshot", not "safe". Bitcoin, Ethereum and Base addresses are also checked against the payment addresses CryptoScamDB reported for scam sites.
+
+In **Scam & Early Warning**, the **Indicator rules** method checks a website (`url_domain`) without visiting it: is it on the CryptoScamDB blacklist (the site, a parent domain such as `scam.example` for `login.scam.example`, or a single listed page on a shared host such as medium.com), is it on the whitelist, does its name imitate a whitelisted site (same name with another ending, a one- or two-letter typo, or containing the name, e.g. `coinbase-support.net`), and does it use international characters (punycode). The look-alike check is a warning sign only; it flags about half the phishing sites on the blacklist and also some genuine sites. The graph shows the site, the payment addresses reported for it and the genuine site it imitates. For a Bitcoin address the method checks the lists only, without fetching transactions.
+
+The same check covers every website list. Each list that matches is shown with its title and licence ("Why Flagged?" tab, and "blacklisted by" in the details panel). The rules are:
+- A blacklist match always wins over an allowlist or Tranco.
+- A site on an allowlist and on no blacklist is reported as known legitimate (CryptoScamDB whitelist) or reviewed (MetaMask whitelist).
+- Parent domains match, except shared hosting platforms. A blacklist that names a platform itself (ScamSniffer and Phishing.Database list sites.google.com) is ignored for it, so the platform's other sites are not flagged.
+- A site on a shared platform gets no credit for the platform's Tranco rank. A popular parent domain with 20 or more blacklisted subdomains, such as the site builder yolasite.com, counts as a shared platform here.
+
+From `backend/`: `..\.venv\Scripts\python.exe -m app.intelligence refresh` (or `status`, `check <address>`, or `check-site <url>`). API: `GET /api/indicators/status`, `GET /api/indicators/check/{address}`.
 
 ## Deploy the frontend to Vercel
 

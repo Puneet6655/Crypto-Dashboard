@@ -11,7 +11,8 @@ const PATTERNS = {
   base_txid: /^0x[0-9a-fA-F]{64}$/,
   solana_address: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
   solana_txid: /^[1-9A-HJ-NP-Za-km-z]{64,90}$/,
-  url_domain: /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/.*)?$/i,
+  // Letters in any script, so look-alike names such as myétherwallet.com can be checked.
+  url_domain: /^(https?:\/\/)?([\p{L}\p{N}-]+\.)+[\p{L}\p{N}-]{2,}(:\d+)?([\/?#].*)?$/iu,
   x402_payment_id: /^[A-Za-z0-9._:-]{4,128}$/,
 };
 

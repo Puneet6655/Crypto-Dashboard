@@ -1,4 +1,4 @@
-"""Read-only routes for the downloaded indicator lists (OFAC sanctions, Ransomwhere).
+"""Read-only routes for the downloaded indicator lists (OFAC sanctions, Ransomwhere, CryptoScamDB).
 
 Refreshing is done by the server itself once a day, or by hand with
 `python -m app.intelligence refresh`; there is deliberately no HTTP route that triggers downloads.

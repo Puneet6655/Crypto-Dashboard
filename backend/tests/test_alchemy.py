@@ -132,7 +132,8 @@ def test_base_investigation_uses_base_ids_and_ofac_note(tmp_path):
     assert body["input"]["type"] == "base_address"
     assert any(n["id"] == f"base:mainnet:address:{SANCTIONED}" and n["details"]["listed_in"] for n in body["graph"]["nodes"])
     rules = {i["rule"]: i["matched"] for i in body["indicators"]}
-    assert rules == {"ofac_exact_match": False, "ofac_counterparty_match": True}
+    assert rules == {"ofac_exact_match": False, "ofac_counterparty_match": True,
+                     "cryptoscamdb_exact_match": False, "cryptoscamdb_counterparty_match": False}
     assert any("confirm the designation covers Base" in limit for limit in body["limitations"])
     assert any("fees not reported" in f["title"] for f in body["findings"])
     assert body["uncertainty"]["data_sources"] == "alchemy.com"
