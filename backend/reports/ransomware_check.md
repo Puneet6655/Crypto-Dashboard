@@ -43,3 +43,7 @@ rows above the threshold.
   strict threshold (flags 1% of random addresses).
 - Recommended live model: backend/models/xgboost_all_labels.joblib, trained on Elliptic++, every Ransomwhere
   family, and random addresses (training/train_models.py). Thresholds are in backend/models/model_card.json.
+- Trade-off of the all-labels model: on Elliptic++ steps 46-49 its PR-AUC is 0.466, against 0.639 for the
+  Elliptic++-only xgboost.joblib. Use it to score random live addresses (fewer false flags, knows ransomware);
+  the Elliptic++-only model is better at Elliptic++-style illicit wallets. A lower random-address weight may
+  narrow the gap.
