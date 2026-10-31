@@ -21,6 +21,7 @@ from xgboost import XGBClassifier
 
 from training.baseline_model import FEATURES
 from training.build_training_dataset import BACKEND_DIR, DATASET
+from training.xgb_device import xgb_device
 
 REPORT = BACKEND_DIR / "reports" / "model_comparison.md"
 SEED = 0
@@ -49,7 +50,7 @@ PLAN = [
 def make_model(name: str, pos_weight: float):
     if name == "XGBoost":
         return XGBClassifier(n_estimators=600, learning_rate=0.05, max_depth=6, subsample=0.8, colsample_bytree=0.8,
-                             scale_pos_weight=pos_weight, tree_method="hist", n_jobs=-1, random_state=SEED,
+                             scale_pos_weight=pos_weight, tree_method="hist", device=xgb_device(), n_jobs=-1, random_state=SEED,
                              eval_metric="aucpr")
     if name == "Random Forest":
         return RandomForestClassifier(n_estimators=300, min_samples_leaf=3, max_features="sqrt",
