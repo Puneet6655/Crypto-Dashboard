@@ -36,6 +36,7 @@ from training.build_training_dataset import (
 )
 from training.compare_models import best_threshold
 from training.improvement_check import V2, V2_EXP, XGB_TUNED
+from training.xgb_device import xgb_device
 
 REPORT = BACKEND_DIR / "reports" / "ransomware_check.md"
 SEED = 0
@@ -69,7 +70,7 @@ def xgb(y: np.ndarray, w: np.ndarray) -> XGBClassifier:
     params = dict(XGB_TUNED)
     pos, neg = w[y == 1].sum(), w[y == 0].sum()
     ratio = float(neg / max(pos, 1e-9)) * params.pop("pos_weight_factor")
-    return XGBClassifier(**params, scale_pos_weight=ratio, tree_method="hist", n_jobs=-1, random_state=SEED)
+    return XGBClassifier(**params, scale_pos_weight=ratio, tree_method="hist", device=xgb_device(), n_jobs=-1, random_state=SEED)
 
 
 def fit(rows: pd.DataFrame, cols: list[str]) -> XGBClassifier:

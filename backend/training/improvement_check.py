@@ -25,6 +25,7 @@ from app.features.wallet_window import ADDRESS_FEATURE_NAMES, EXPOSURE_FEATURE_N
 from training.build_training_dataset import BACKEND_DIR, DATASET
 from training.compare_models import best_threshold, metrics
 from training.tune_models import fit_retry, rf
+from training.xgb_device import xgb_device
 
 REPORT = BACKEND_DIR / "reports" / "improvement_check.md"
 SEED = 0
@@ -59,7 +60,7 @@ NOTES = [
 def xgb_tuned(_params: dict, y: pd.Series) -> XGBClassifier:
     params = dict(XGB_TUNED)
     ratio = float((y == 0).sum() / max((y == 1).sum(), 1)) * params.pop("pos_weight_factor")
-    return XGBClassifier(**params, scale_pos_weight=ratio, tree_method="hist", n_jobs=-1, random_state=SEED)
+    return XGBClassifier(**params, scale_pos_weight=ratio, tree_method="hist", device=xgb_device(), n_jobs=-1, random_state=SEED)
 
 
 MODELS = {"XGBoost (tuned)": (xgb_tuned, {}), "Random Forest (tuned)": (rf, RF_TUNED)}

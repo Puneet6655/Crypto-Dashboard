@@ -26,6 +26,7 @@ import pyarrow as pa
 import pyarrow.csv as pacsv
 
 from training.build_training_dataset import BACKEND_DIR
+from training.xgb_device import xgb_device
 
 REPORT = BACKEND_DIR / "reports" / "elliptic2_models.md"
 SEED = 0
@@ -152,7 +153,7 @@ def train(out: Path) -> None:
     models = {
         "XGBoost": XGBClassifier(n_estimators=800, learning_rate=0.05, max_depth=6, min_child_weight=5,
                                  subsample=0.85, colsample_bytree=0.7, reg_lambda=5, scale_pos_weight=ratio * 0.25,
-                                 tree_method="hist", n_jobs=-1, random_state=SEED),
+                                 tree_method="hist", device=xgb_device(), n_jobs=-1, random_state=SEED),
         "Random Forest": RandomForestClassifier(n_estimators=400, min_samples_leaf=2, max_features="sqrt",
                                                 class_weight="balanced_subsample", n_jobs=-1, random_state=SEED),
     }

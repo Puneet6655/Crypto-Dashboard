@@ -19,6 +19,7 @@ from xgboost import XGBClassifier
 from training.baseline_model import FEATURES
 from training.build_training_dataset import BACKEND_DIR, DATASET
 from training.compare_models import best_threshold, metrics
+from training.xgb_device import xgb_device
 
 REPORT = BACKEND_DIR / "reports" / "tuning.md"
 SEED = 0
@@ -44,7 +45,7 @@ def add_address_type(df: pd.DataFrame) -> pd.DataFrame:
 def xgb(params: dict, y: pd.Series) -> XGBClassifier:
     params = dict(params)
     ratio = float((y == 0).sum() / max((y == 1).sum(), 1)) * params.pop("pos_weight_factor")
-    return XGBClassifier(**params, scale_pos_weight=ratio, tree_method="hist", n_jobs=-1, random_state=SEED,
+    return XGBClassifier(**params, scale_pos_weight=ratio, tree_method="hist", device=xgb_device(), n_jobs=-1, random_state=SEED,
                          eval_metric="aucpr")
 
 
