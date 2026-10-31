@@ -4,6 +4,7 @@
     ..\\.venv\\Scripts\\python.exe -m app.intelligence refresh --all    # download every list now
     ..\\.venv\\Scripts\\python.exe -m app.intelligence status
     ..\\.venv\\Scripts\\python.exe -m app.intelligence check <address>
+    ..\\.venv\\Scripts\\python.exe -m app.intelligence check-site <url or domain>
 """
 import argparse
 import logging
@@ -22,6 +23,8 @@ def main() -> int:
     commands.add_parser("status", help="show the saved snapshots")
     check = commands.add_parser("check", help="look up one address in the saved lists")
     check.add_argument("address")
+    check_site = commands.add_parser("check-site", help="look up one website in the saved website lists")
+    check_site.add_argument("url")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING)
@@ -43,8 +46,21 @@ def main() -> int:
     if args.command == "status":
         for s in index.status(settings.indicators_max_age_hours):
             count = f"{s['record_count']:,}" if s["record_count"] is not None else "-"
-            print(f"{s['source_id']:12} loaded={s['loaded']!s:5} addresses={count:>7} "
+            print(f"{s['source_id']:22} loaded={s['loaded']!s:5} entries={count:>9} "
                   f"retrieved={s['retrieved_at'] or '-'} list_updated={s['list_updated_at'] or '-'}")
+        return 0
+
+    if args.command == "check-site":
+        hits = index.lookup_site(args.url)
+        if not hits:
+            print(f"No match in the {sum(1 for l in index.lists.values() if l.source.chain == 'web')} loaded website lists.")
+        for h in hits:
+            source = index.loaded(h.source_id).source
+            rank = f", rank {h.rank:,}" if h.rank else ""
+            print(f"{source.site_role:11} {h.source_id:22} {h.how:6} {h.listed}{rank}  [{source.licence}]")
+        shared = index.shared_platform(args.url.split("//")[-1].split("/")[0].lower().removeprefix("www."))
+        if shared:
+            print(f"Shared hosting platform: {shared} (its listings and popularity do not count for the site)")
         return 0
 
     hits = index.lookup(args.address)

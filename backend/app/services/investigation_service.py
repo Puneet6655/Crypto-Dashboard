@@ -1,7 +1,7 @@
 """Runs one investigation: fetch data, build the graph, describe what was seen.
 
-Milestone 3 supports one method, "live_lookup", for Bitcoin addresses and
-transaction IDs. It reports observations, plus exact-match checks of every address in
+Methods: "live_lookup" for addresses and transactions, and "rules_v1" (list checks only,
+app/services/rules_investigation.py) for websites and Bitcoin addresses. It reports observations, plus exact-match checks of every address in
 the graph against the downloaded OFAC sanctions and Ransomwhere lists
 (app/intelligence). Models (Milestones 10-11) add judgements later, as separate findings.
 
@@ -158,6 +158,15 @@ async def run_investigation(request: InvestigationRequest, provider: BitcoinProv
 
     ethereum and base are the EVM failover chains (None when no key is set for them).
     """
+    if request.method == "rules_v1":
+        from app.services.rules_investigation import investigate_address_lists, investigate_site
+
+        index = indicators if indicators is not None else get_indicator_index()
+        if request.input_type == "url_domain":
+            return investigate_site(request, max_nodes, index)
+        if request.input_type == "bitcoin_address":
+            return investigate_address_lists(request, max_nodes, index)
+        raise UnsupportedInvestigation("Indicator rules check websites and Bitcoin addresses only.")
     if request.method != "live_lookup":
         raise UnsupportedInvestigation(f"Method '{request.method}' cannot run on the server yet.")
     if request.mode != "crypto_investigation":

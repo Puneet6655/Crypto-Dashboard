@@ -83,6 +83,56 @@ DEFAULT_SOURCES: list[dict] = [
         "citation": "",
     },
     {
+        "name": "CryptoScamDB",
+        "category": "Sanctions and threat intelligence",
+        "url": "https://github.com/CryptoScamDB",
+        "used_for": "Scam website blacklist (with reported payment addresses) and whitelist of genuine crypto sites, "
+                    "for website checks. Local lookups only; not updated since 2022.",
+        "licence": "No licence given: local lookups only, not redistributed or used for training",
+        "citation": "",
+    },
+    {
+        "name": "MetaMask eth-phishing-detect",
+        "category": "Sanctions and threat intelligence",
+        "url": "https://github.com/MetaMask/eth-phishing-detect",
+        "used_for": "Crypto phishing website blacklist, whitelist and look-alike names, for website checks.",
+        "licence": "DBAD Public License 1.2",
+        "citation": "",
+    },
+    {
+        "name": "ScamSniffer scam database",
+        "category": "Sanctions and threat intelligence",
+        "url": "https://github.com/scamsniffer/scam-database",
+        "used_for": "Crypto drainer and phishing domain blacklist (public copy delayed 7 days), for website checks.",
+        "licence": "GPL-3.0",
+        "citation": "",
+    },
+    {
+        "name": "Polkadot{.js} phishing list",
+        "category": "Sanctions and threat intelligence",
+        "url": "https://github.com/polkadot-js/phishing",
+        "used_for": "Crypto phishing deny list, and its allow list of shared hosting platforms, for website checks.",
+        "licence": "Apache-2.0",
+        "citation": "",
+    },
+    {
+        "name": "Phishing.Database",
+        "category": "Sanctions and threat intelligence",
+        "url": "https://github.com/mitchellkrogza/Phishing.Database",
+        "used_for": "General (not crypto-specific) list of active phishing domains, weighted lower in website checks.",
+        "licence": "MIT",
+        "citation": "",
+    },
+    {
+        "name": "Tranco top sites list",
+        "category": "Research datasets",
+        "url": "https://tranco-list.eu/",
+        "used_for": "Top 100,000 websites, shown as popularity context only (never as proof a site is safe).",
+        "licence": "Inputs include CC BY-NC data: internal, non-commercial use only",
+        "citation": "Le Pochat, V. et al. (2019). Tranco: A Research-Oriented Top Sites Ranking Hardened Against "
+                    "Manipulation. NDSS 2019.",
+    },
+    {
         "name": "Cytoscape.js",
         "category": "Open-source software",
         "url": "https://js.cytoscape.org/",
@@ -126,7 +176,8 @@ def ensure_seeded(pool: ConnectionPool) -> None:
 
 # Defaults added after a database may already have been seeded. Each is added once; if an admin
 # deletes it afterwards it stays deleted.
-ADDED_LATER = ("Etherscan API V2",)
+ADDED_LATER = ("Etherscan API V2", "CryptoScamDB", "MetaMask eth-phishing-detect", "ScamSniffer scam database",
+               "Polkadot{.js} phishing list", "Phishing.Database", "Tranco top sites list")
 
 
 def _add_later_defaults(conn) -> None:
