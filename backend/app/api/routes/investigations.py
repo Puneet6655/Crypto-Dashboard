@@ -10,7 +10,9 @@ from app.config import Settings, get_settings
 from app.db import NullStore, run_safely
 from app.intelligence.index import IndicatorIndex, get_indicator_index
 from app.providers.base import BitcoinProvider, ProviderError
-from app.providers.registry import get_bitcoin_provider
+from app.providers.failover import FailoverEvmProvider
+from app.providers.registry import get_base_provider, get_bitcoin_provider, get_ethereum_provider, get_solana_provider
+from app.providers.solana_alchemy import SolanaProvider
 from app.schemas.investigation import InvestigationRequest, InvestigationResult
 from app.services.investigation_service import UnsupportedInvestigation, run_investigation
 from app.store import RecordingProvider, get_store
@@ -33,10 +35,14 @@ async def create_investigation(
     settings: Settings = Depends(get_settings),
     store: NullStore = Depends(get_store),
     indicators: IndicatorIndex = Depends(get_indicator_index),
+    ethereum: FailoverEvmProvider | None = Depends(get_ethereum_provider),
+    base: FailoverEvmProvider | None = Depends(get_base_provider),
+    solana: SolanaProvider | None = Depends(get_solana_provider),
 ) -> InvestigationResult:
     recorder = RecordingProvider(provider)
     try:
-        result = await run_investigation(request, recorder, settings.max_graph_nodes, indicators)
+        result = await run_investigation(request, recorder, settings.max_graph_nodes, indicators, ethereum, base,
+                                         solana)
     except UnsupportedInvestigation as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except ProviderError as exc:

@@ -1,6 +1,9 @@
 // Turning things on screen (graph nodes, IDs) into case items: { item_type, value, network, label }.
 
 const BITCOIN_ID = /^bitcoin:([a-z0-9]+):(address|tx):(.+)$/;
+const EVM_ID = /^(ethereum|base):([a-z0-9-]+):(address|tx):(0x[0-9a-f]+)$/;
+const EVM_EXPLORERS = { ethereum: "https://etherscan.io", base: "https://basescan.org" };
+const SOLANA_ID = /^solana:([a-z0-9-]+):(address|tx):([1-9A-HJ-NP-Za-km-z]+)$/;
 
 export const ITEM_TYPES = {
   address: { label: "Wallet address", short: "Address", icon: "wallet" },
@@ -20,6 +23,26 @@ export function itemFromNode(node) {
       item_type: kind === "tx" ? "transaction" : "address",
       value,
       network: network === "mainnet" ? "bitcoin" : `bitcoin-${network}`,
+      label: node.label,
+    };
+  }
+  const evm = EVM_ID.exec(node.id);
+  if (evm) {
+    const [, chain, network, kind, value] = evm;
+    return {
+      item_type: kind === "tx" ? "transaction" : "address",
+      value,
+      network: network === "mainnet" ? chain : `${chain}-${network}`,
+      label: node.label,
+    };
+  }
+  const sol = SOLANA_ID.exec(node.id);
+  if (sol) {
+    const [, network, kind, value] = sol;
+    return {
+      item_type: kind === "tx" ? "transaction" : "address",
+      value,
+      network: network === "mainnet" ? "solana" : `solana-${network}`,
       label: node.label,
     };
   }
@@ -56,8 +79,35 @@ export function shortValue(value, keep = 8) {
   return value.length > keep * 2 + 3 ? `${value.slice(0, keep)}…${value.slice(-keep)}` : value;
 }
 
-// A public explorer link for Bitcoin items (opens in a new tab).
+// The live investigation input type for a case item, or null when it cannot be looked up live.
+export function liveInputType(item) {
+  const kind = item.item_type === "address" ? "address" : item.item_type === "transaction" ? "txid" : null;
+  if (!kind) return null;
+  if (item.network === "bitcoin") return `bitcoin_${kind}`;
+  if (item.network === "ethereum" || item.network === "base" || item.network === "solana") return `${item.network}_${kind}`;
+  return null;
+}
+
+// The explorer site for an item's network, e.g. "etherscan.io".
+export function explorerName(item) {
+  if (item.network === "solana") return "solscan.io";
+  const base = EVM_EXPLORERS[item.network];
+  return base ? base.replace("https://", "") : "mempool.space";
+}
+
+// A public explorer link for Bitcoin, Ethereum and Base items (opens in a new tab).
 export function explorerUrl(item) {
+  if (item.network === "solana") {
+    if (item.item_type === "address") return `https://solscan.io/account/${item.value}`;
+    if (item.item_type === "transaction") return `https://solscan.io/tx/${item.value}`;
+    return null;
+  }
+  const evm = EVM_EXPLORERS[item.network];
+  if (evm) {
+    if (item.item_type === "address") return `${evm}/address/${item.value}`;
+    if (item.item_type === "transaction") return `${evm}/tx/${item.value}`;
+    return null;
+  }
   if (!item.network?.startsWith("bitcoin")) return null;
   const base = item.network === "bitcoin" ? "https://mempool.space" : `https://mempool.space/${item.network.replace("bitcoin-", "")}`;
   if (item.item_type === "address") return `${base}/address/${item.value}`;

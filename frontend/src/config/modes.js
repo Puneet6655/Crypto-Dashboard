@@ -8,7 +8,7 @@ export const MODES = [
   {
     id: "crypto_investigation",
     label: "Crypto Investigation",
-    inputTypes: ["bitcoin_address", "bitcoin_txid"],
+    inputTypes: ["bitcoin_address", "bitcoin_txid", "ethereum_address", "ethereum_txid", "base_address", "base_txid", "solana_address", "solana_txid"],
   },
   {
     id: "x402",
@@ -21,6 +21,12 @@ export const INPUT_TYPES = {
   url_domain: { label: "Website URL or domain", placeholder: "example-giveaway.test" },
   bitcoin_address: { label: "Bitcoin address", placeholder: "bc1q... or 1... or 3..." },
   bitcoin_txid: { label: "Bitcoin transaction ID", placeholder: "64 hexadecimal characters" },
+  ethereum_address: { label: "Ethereum address", placeholder: "0x followed by 40 hexadecimal characters" },
+  ethereum_txid: { label: "Ethereum transaction hash", placeholder: "0x followed by 64 hexadecimal characters" },
+  base_address: { label: "Base address", placeholder: "0x followed by 40 hexadecimal characters" },
+  base_txid: { label: "Base transaction hash", placeholder: "0x followed by 64 hexadecimal characters" },
+  solana_address: { label: "Solana address", placeholder: "32 to 44 base58 characters" },
+  solana_txid: { label: "Solana transaction signature", placeholder: "about 88 base58 characters" },
   x402_payment_id: { label: "x402 payment or request ID", placeholder: "x402-demo-0001" },
 };
 
@@ -30,9 +36,9 @@ export const INPUT_TYPES = {
 export const METHODS = [
   {
     id: "live_lookup",
-    label: "Live lookup (mempool.space via backend)",
+    label: "Live lookup (mempool.space, Etherscan or Alchemy via backend)",
     modes: ["crypto_investigation"],
-    inputTypes: ["bitcoin_address", "bitcoin_txid"],
+    inputTypes: ["bitcoin_address", "bitcoin_txid", "ethereum_address", "ethereum_txid", "base_address", "base_txid", "solana_address", "solana_txid"],
     status: "ready",
     runsOn: "server",
   },

@@ -7,16 +7,19 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 ITEM_TYPES = ("address", "transaction", "domain", "payment", "other")
-_HEX64 = re.compile(r"^[0-9a-fA-F]{64}$")
+_HEX64 = re.compile(r"^(0x)?[0-9a-fA-F]{64}$")  # Bitcoin txid, or Ethereum hash with 0x
+_SOLANA_SIGNATURE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{64,90}$")
 
 _CASE_COLUMNS = """c.id, c.title, c.description, c.status, c.priority, c.created_at, c.updated_at,
                    u.display_name AS created_by_name"""
 
 
 def clean_value(item_type: str, value: str) -> str:
-    """Trim spaces; transaction IDs are compared in lower case (addresses keep their case)."""
+    """Trim spaces; transaction IDs and 0x addresses are compared in lower case (other addresses keep their case)."""
     value = value.strip()
     if item_type == "transaction" and _HEX64.match(value):
+        return value.lower()
+    if item_type == "address" and re.fullmatch(r"0x[0-9a-fA-F]{40}", value):
         return value.lower()
     return value
 
@@ -28,8 +31,9 @@ def value_problem(item_type: str, value: str) -> str | None:
         return "That is too long to be an identifier (200 characters at most)."
     if item_type in ("address", "transaction") and re.search(r"\s", value):
         return "Addresses and transaction IDs cannot contain spaces."
-    if item_type == "transaction" and not _HEX64.match(value):
-        return "A Bitcoin transaction ID is 64 hexadecimal characters."
+    if item_type == "transaction" and not (_HEX64.match(value) or _SOLANA_SIGNATURE.match(value)):
+        return ("A transaction ID is 64 hexadecimal characters (Ethereum hashes start with 0x) "
+                "or a Solana signature (about 88 base58 characters).")
     return None
 
 
@@ -138,3 +142,15 @@ def remove_item(pool: ConnectionPool, case_id: int, item_id: int) -> dict | None
 def case_exists(pool: ConnectionPool, case_id: int) -> bool:
     with pool.connection() as conn:
         return conn.execute("SELECT 1 FROM cases WHERE id = %s", (case_id,)).fetchone() is not None
+
+
+def watched_eth_addresses(pool: ConnectionPool) -> list[tuple[str, int, str]]:
+    """(address, case id, case title) for every Ethereum-format address in an open case, newest case first.
+    Base addresses are left out: the live alerts watch Ethereum mainnet."""
+    with pool.connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            r"""SELECT lower(i.value), c.id, c.title FROM case_items i JOIN cases c ON c.id = i.case_id
+                WHERE i.item_type = 'address' AND c.status = 'open' AND i.network <> 'base'
+                  AND i.value ~* '^0x[0-9a-f]{40}$'
+                ORDER BY c.updated_at DESC""")
+        return [(row[0], row[1], row[2]) for row in cur.fetchall()]

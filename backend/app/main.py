@@ -8,7 +8,9 @@ from fastapi import Depends, FastAPI
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, auth, bigquery, bitcoin, cases, indicators, investigations, sources, system_status
+from app.alerts.watcher import AlertWatcher, set_watcher
+from app.alerts.watchlist import make_loader
+from app.api.routes import admin, alerts, auth, bigquery, bitcoin, cases, ethereum, indicators, investigations, solana, sources, system_status
 from app.auth.deps import require_viewer
 from app.config import get_settings
 from app.db import NullStore, open_store
@@ -28,7 +30,18 @@ async def lifespan(app: FastAPI):
     if settings.indicators_auto_refresh:
         refresher = asyncio.create_task(
             keep_indicators_fresh(settings.indicators_dir, settings.indicators_max_age_hours))
+    watcher_task = None
+    if settings.alchemy_enabled and settings.alchemy_api_key and settings.live_alerts_enabled:
+        watcher = AlertWatcher(f"wss://eth-mainnet.g.alchemy.com/v2/{settings.alchemy_api_key}",
+                               make_loader(lambda: app.state.store, settings.live_alerts_watch_ofac))
+        set_watcher(watcher)
+        watcher_task = asyncio.create_task(watcher.run())
     yield
+    if watcher_task is not None:
+        watcher_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await watcher_task
+        set_watcher(None)
     if refresher is not None:
         refresher.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -50,9 +63,13 @@ app.add_middleware(
 signed_in = [Depends(require_viewer)]
 app.include_router(auth.router)
 app.include_router(bitcoin.router, dependencies=signed_in)
+app.include_router(ethereum.router, dependencies=signed_in)
+app.include_router(ethereum.base_router, dependencies=signed_in)
 app.include_router(investigations.router, dependencies=signed_in)
 app.include_router(indicators.router, dependencies=signed_in)
 app.include_router(system_status.router, dependencies=signed_in)
+app.include_router(alerts.router, dependencies=signed_in)
+app.include_router(solana.router, dependencies=signed_in)
 app.include_router(cases.router)
 app.include_router(sources.router)
 app.include_router(bigquery.router)

@@ -6,13 +6,14 @@ import Icon from "./Icon.jsx";
 export const PAGES = [
   { id: "investigate", label: "Investigate", icon: "investigate", hint: "Look up addresses and transactions" },
   { id: "cases", label: "Cases", icon: "cases", hint: "Group what you want to follow up" },
+  { id: "alerts", label: "Live alerts", icon: "bell", hint: "Case and OFAC addresses moving money now" },
   { id: "status", label: "Status", icon: "status", hint: "Live lookups, database, sanction lists" },
   { id: "sources", label: "Sources", icon: "sources", hint: "Data and software we rely on" },
   { id: "bigquery", label: "BigQuery refresh", icon: "bigquery", hint: "Load new transaction data", badge: "Dev" },
   { id: "users", label: "Users", icon: "users", hint: "Accounts, roles and audit log", role: "admin" },
 ];
 
-export default function Sidebar({ page, open, onClose }) {
+export default function Sidebar({ page, open, onClose, unseenAlerts = 0 }) {
   const { user, can, signOut } = useAuth();
   const { cases } = useCases();
   const openCases = cases.filter((c) => c.status === "open").length;
@@ -41,6 +42,7 @@ export default function Sidebar({ page, open, onClose }) {
               <Icon name={p.icon} size={20} />
               <span className="grow">{p.label}</span>
               {p.id === "cases" && openCases > 0 && <span className="nav-count">{openCases}</span>}
+              {p.id === "alerts" && unseenAlerts > 0 && <span className="nav-count nav-count-alert">{unseenAlerts}</span>}
               {p.badge && <span className="nav-badge">{p.badge}</span>}
             </a>
           ))}

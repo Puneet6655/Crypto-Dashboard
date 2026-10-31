@@ -110,10 +110,17 @@ class FallbackEvent:
     skipped: tuple[str, ...]
 
 
-class FailoverBitcoinProvider(BitcoinProvider):
-    name = "failover"
+def _unsupported(source) -> frozenset[str]:
+    return getattr(source, "unsupported", frozenset())
 
-    def __init__(self, sources: list[BitcoinProvider], cache: TTLCache | None = None,
+
+class FailoverChain:
+    """Generic failover over sources that share method names (Bitcoin or EVM adapters)."""
+
+    name = "failover"
+    label = "data"  # used in messages: "No Bitcoin data source could answer"
+
+    def __init__(self, sources: list, cache: TTLCache | None = None,
                  clock: Callable[[], float] = time.monotonic):
         if not sources:
             raise ValueError("FailoverBitcoinProvider needs at least one source")
@@ -122,26 +129,8 @@ class FailoverBitcoinProvider(BitcoinProvider):
         self.cache = cache if cache is not None else TTLCache(clock=clock)
         self.state = {source.name: SourceState() for source in self.sources}
         self.recent_fallbacks: deque[FallbackEvent] = deque(maxlen=20)
-
-    # ---- the BitcoinProvider methods ---------------------------------------------------
-
-    async def get_address_summary(self, address: str) -> AddressSummary:
-        return await self._call("get_address_summary", (address,), ("address", address),
-                                lambda _: TTL_ADDRESS_SUMMARY)
-
-    async def get_transaction(self, txid: str) -> TransactionSummary:
-        return await self._call("get_transaction", (txid,), ("tx", txid),
-                                lambda tx: TTL_CONFIRMED_TX if tx.status == "confirmed" else TTL_UNCONFIRMED_TX)
-
-    async def get_address_transactions(self, address: str, after_txid: str | None = None) -> list[TransactionSummary]:
-        ttl = TTL_FIRST_PAGE if after_txid is None else TTL_OLDER_PAGE
-        page = await self._call("get_address_transactions", (address, after_txid), ("txs", address, after_txid),
-                                lambda _: ttl)
-        return list(page)
-
-    async def get_block_stats(self, height: int) -> list[BlockStat]:
-        page = await self._call("get_block_stats", (height,), ("blocks", height), lambda _: TTL_BLOCK_STATS)
-        return list(page)
+        # cache key -> name of the source that answered it (for evidence)
+        self.answered_by: dict[tuple, str] = {}
 
     async def health(self) -> ProviderHealth:
         """Tip height from the first source that answers. Never raises.
@@ -161,7 +150,7 @@ class FailoverBitcoinProvider(BitcoinProvider):
                 return health
             notes.append(f"{source.name}: {health.detail}")
         return ProviderHealth(provider=self.name, reachable=False, tip_height=None, checked_at=_utcnow(),
-                              detail="No Bitcoin data source answered: " + "; ".join(notes))
+                              detail=f"No {self.label} data source answered: " + "; ".join(notes))
 
     # ---- status for the dashboard --------------------------------------------------------
 
@@ -185,7 +174,7 @@ class FailoverBitcoinProvider(BitcoinProvider):
                 "last_error_status": st.last_error_status,
                 "last_error_at": st.last_error_at,
                 "last_success_at": st.last_success_at,
-                "not_supported": sorted(source.unsupported),
+                "not_supported": sorted(_unsupported(source)),
                 "health": None,
             }
             # Do not ping a source that told us to slow down.
@@ -203,7 +192,7 @@ class FailoverBitcoinProvider(BitcoinProvider):
 
     # ---- the failover loop ---------------------------------------------------------------
 
-    def _cooldown_left(self, source: BitcoinProvider) -> float:
+    def _cooldown_left(self, source) -> float:
         return max(0.0, self.state[source.name].cooldown_until - self.clock())
 
     async def _call(self, method: str, args: tuple, cache_key: tuple, ttl: Callable[[Any], float]) -> Any:
@@ -214,7 +203,7 @@ class FailoverBitcoinProvider(BitcoinProvider):
         skipped: list[str] = []
         rate_limited = False
         for source in self.sources:
-            if method in source.unsupported:
+            if method in _unsupported(source):
                 continue
             st = self.state[source.name]
             wait = self._cooldown_left(source)
@@ -246,6 +235,9 @@ class FailoverBitcoinProvider(BitcoinProvider):
                 self.recent_fallbacks.append(FallbackEvent(_utcnow(), method, source.name, tuple(skipped)))
                 log.info("%s answered %s after: %s", source.name, method, "; ".join(skipped))
             self.cache.put(cache_key, result, ttl(result))
+            self.answered_by[cache_key] = source.name
+            if len(self.answered_by) > 4096:
+                self.answered_by.pop(next(iter(self.answered_by)))
             return result
 
         self.recent_fallbacks.append(FallbackEvent(_utcnow(), method, None, tuple(skipped)))
@@ -271,13 +263,88 @@ class FailoverBitcoinProvider(BitcoinProvider):
         st.last_error_at = _utcnow()
 
     def _all_failed(self, method: str, skipped: list[str], rate_limited: bool) -> ProviderError:
-        candidates = [s for s in self.sources if method not in s.unsupported]
+        candidates = [s for s in self.sources if method not in _unsupported(s)]
         if not candidates:
-            return ProviderError(f"No configured Bitcoin data source supports {method}", 501)
+            return ProviderError(f"No configured {self.label} data source supports {method}", 501)
         waits = [self._cooldown_left(s) for s in candidates]
         retry_after = min(waits) if any(w > 0 for w in waits) else None
         detail = "; ".join(skipped) if skipped else "no source was tried"
-        message = f"No Bitcoin data source could answer right now ({detail})."
+        message = f"No {self.label} data source could answer right now ({detail})."
         if retry_after:
             message += f" Try again in {retry_after:.0f} seconds."
         return ProviderError(message, 429 if rate_limited else 503, retry_after=retry_after)
+
+
+class FailoverBitcoinProvider(FailoverChain, BitcoinProvider):
+    label = "Bitcoin"
+
+    # ---- the BitcoinProvider methods ---------------------------------------------------
+
+    async def get_address_summary(self, address: str) -> AddressSummary:
+        return await self._call("get_address_summary", (address,), ("address", address),
+                                lambda _: TTL_ADDRESS_SUMMARY)
+
+    async def get_transaction(self, txid: str) -> TransactionSummary:
+        return await self._call("get_transaction", (txid,), ("tx", txid),
+                                lambda tx: TTL_CONFIRMED_TX if tx.status == "confirmed" else TTL_UNCONFIRMED_TX)
+
+    async def get_address_transactions(self, address: str, after_txid: str | None = None) -> list[TransactionSummary]:
+        ttl = TTL_FIRST_PAGE if after_txid is None else TTL_OLDER_PAGE
+        page = await self._call("get_address_transactions", (address, after_txid), ("txs", address, after_txid),
+                                lambda _: ttl)
+        return list(page)
+
+    async def get_block_stats(self, height: int) -> list[BlockStat]:
+        page = await self._call("get_block_stats", (height,), ("blocks", height), lambda _: TTL_BLOCK_STATS)
+        return list(page)
+
+
+class FailoverEvmProvider(FailoverChain):
+    """Failover for one EVM chain (Ethereum: Etherscan, then Alchemy; Base: Alchemy).
+
+    Each list (transactions, token, internal, NFT transfers) is a separate call here, so after a
+    failover different lists can come from different sources; describe() says which one answered.
+    """
+
+    def __init__(self, sources: list, chain: str, label: str, **kwargs):
+        super().__init__(sources, **kwargs)
+        self.chain = chain
+        self.label = label
+
+    async def get_address_summary(self, address: str):
+        return await self._call("get_address_summary", (address,), ("address", address), lambda _: TTL_ADDRESS_SUMMARY)
+
+    async def _list(self, method: str, address: str):
+        return list(await self._call(method, (address,), (method, address), lambda _: TTL_FIRST_PAGE))
+
+    async def get_address_transactions(self, address: str):
+        return await self._list("get_address_transactions", address)
+
+    async def get_token_transfers(self, address: str):
+        return await self._list("get_token_transfers", address)
+
+    async def get_internal_transfers(self, address: str):
+        return await self._list("get_internal_transfers", address)
+
+    async def get_nft_transfers(self, address: str):
+        return await self._list("get_nft_transfers", address)
+
+    async def get_transaction(self, tx_hash: str):
+        return await self._call("get_transaction", (tx_hash,), ("tx", tx_hash),
+                                lambda tx: TTL_CONFIRMED_TX if tx.status != "pending" else TTL_UNCONFIRMED_TX)
+
+    async def get_tx_internal_transfers(self, tx_hash: str):
+        return list(await self._call("get_tx_internal_transfers", (tx_hash,), ("tx_internal", tx_hash),
+                                     lambda _: TTL_CONFIRMED_TX))
+
+    def _answered(self, method: str, address: str):
+        name = self.answered_by.get((method, address))
+        return next((s for s in self.sources if s.name == name), self.sources[0])
+
+    def describe(self, method: str, address: str) -> tuple[str, str]:
+        """(source name, key-free request description) of the source that answered this list."""
+        return self._answered(method, address).describe(method, address)
+
+    def history_complete(self, method: str, address: str, count: int) -> bool:
+        """Whether the list from the source that answered holds the whole history of that kind."""
+        return self._answered(method, address).history_complete(method, address, count)

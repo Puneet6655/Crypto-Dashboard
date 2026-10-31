@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { useCases } from "../cases/CasesContext.jsx";
-import { ITEM_TYPES, caseItemAttrs, explorerUrl, shortValue } from "../cases/caseItems.js";
+import { ITEM_TYPES, caseItemAttrs, explorerName, explorerUrl, liveInputType, shortValue } from "../cases/caseItems.js";
 import { navigate } from "../hooks/useHashRoute.js";
 import PageHeader, { formatDate, timeAgo } from "../components/PageHeader.jsx";
 import Icon from "../components/Icon.jsx";
@@ -342,7 +342,8 @@ function ItemRow({ item, canEdit, onInvestigate, onRemove, onSaveNote }) {
   const [note, setNote] = useState(item.note);
   const [saving, setSaving] = useState(false);
   const link = explorerUrl(item);
-  const canLookUp = item.network === "bitcoin" && (item.item_type === "address" || item.item_type === "transaction");
+  const lookUpType = liveInputType(item);
+  const canLookUp = lookUpType !== null;
 
   async function commitNote() {
     if (note === item.note) return;
@@ -377,12 +378,12 @@ function ItemRow({ item, canEdit, onInvestigate, onRemove, onSaveNote }) {
         <div className="row-actions">
           {canLookUp && (
             <button type="button" className="ghost-icon" title="Investigate live" aria-label="Investigate live"
-              onClick={() => onInvestigate(item.item_type === "address" ? "bitcoin_address" : "bitcoin_txid", item.value)}>
+              onClick={() => onInvestigate(lookUpType, item.value)}>
               <Icon name="investigate" size={16} />
             </button>
           )}
           {link && (
-            <a className="ghost-icon" href={link} target="_blank" rel="noreferrer" title="Open on mempool.space" aria-label="Open on mempool.space">
+            <a className="ghost-icon" href={link} target="_blank" rel="noreferrer" title={`Open on ${explorerName(item)}`} aria-label={`Open on ${explorerName(item)}`}>
               <Icon name="external" size={16} />
             </a>
           )}
@@ -416,12 +417,27 @@ function CopyButton({ value }) {
   );
 }
 
-// Guess the type from what was typed: 64 hex characters is a transaction, anything else an address.
+// Guess the type from what was typed: 64 hex characters (or 0x + 64, or a Solana signature) is a
+// transaction, anything else an address.
+const SOLANA_SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{80,90}$/;
+const SOLANA_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const BITCOIN_ADDRESS = /^([13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{8,87})$/i;
+
 function guessType(value) {
   const v = value.trim();
-  if (/^[0-9a-fA-F]{64}$/.test(v)) return "transaction";
+  if (/^(0x)?[0-9a-fA-F]{64}$/.test(v) || SOLANA_SIGNATURE.test(v)) return "transaction";
   if (/^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/.*)?$/i.test(v) && !/^(bc1|[13])/i.test(v)) return "domain";
   return "address";
+}
+
+// Which chain a typed identifier belongs to, so the case can look it up live and watch it.
+function guessNetwork(type, v) {
+  if (type === "domain") return "web";
+  if (type !== "address" && type !== "transaction") return "other";
+  if (/^0x[0-9a-fA-F]+$/.test(v)) return "ethereum";
+  if (BITCOIN_ADDRESS.test(v) || /^[0-9a-fA-F]{64}$/.test(v)) return "bitcoin";
+  if (SOLANA_SIGNATURE.test(v) || SOLANA_ADDRESS.test(v)) return "solana";
+  return "bitcoin";
 }
 
 function AddItemForm({ caseId, onAdded }) {
@@ -441,7 +457,7 @@ function AddItemForm({ caseId, onAdded }) {
     try {
       const { created } = await apiFetch(`/api/cases/${caseId}/items`, {
         method: "POST",
-        body: { item_type: resolved, value: value.trim(), note, network: resolved === "domain" ? "web" : "bitcoin" },
+        body: { item_type: resolved, value: value.trim(), note, network: guessNetwork(resolved, value.trim()) },
       });
       toast(created ? "Added to the case" : "That is already in the case", { tone: created ? "success" : "info" });
       setValue("");

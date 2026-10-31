@@ -53,7 +53,8 @@ def new_investigation_id(now: datetime) -> str:
 class GraphBuilder:
     """Collects nodes and edges once each and stops adding nodes at the limit."""
 
-    def __init__(self, network: str, max_nodes: int):
+    def __init__(self, network: str, max_nodes: int, chain: str = "bitcoin"):
+        self.chain = chain
         self.network = network
         self.max_nodes = max_nodes
         self.nodes: dict[str, GraphNode] = {}
@@ -76,7 +77,7 @@ class GraphBuilder:
             self.edges.setdefault(edge.id, edge)
 
     def address_node(self, address: str) -> GraphNode:
-        return GraphNode(id=f"bitcoin:{self.network}:address:{address}", type="address", label=_short(address))
+        return GraphNode(id=f"{self.chain}:{self.network}:address:{address}", type="address", label=_short(address))
 
     def add_transaction(self, tx: TransactionSummary, evidence_id: str) -> None:
         """Add a transaction node, its input addresses (spent from) and output addresses (paid to).
@@ -115,7 +116,7 @@ class GraphBuilder:
 
     def addresses(self) -> list[str]:
         """Every address shown in the graph, in the order it was added."""
-        prefix = f"bitcoin:{self.network}:address:"
+        prefix = f"{self.chain}:{self.network}:address:"
         return [node.id[len(prefix):] for node in self.nodes.values() if node.type == "address"]
 
     def mark_listed(self, flagged: dict[str, list[str]]) -> None:
@@ -151,8 +152,12 @@ def _data_sources(*provenances: Provenance) -> dict[str, datetime]:
 
 
 async def run_investigation(request: InvestigationRequest, provider: BitcoinProvider, max_nodes: int,
-                            indicators: IndicatorIndex | None = None) -> InvestigationResult:
-    """Run one live investigation and return the full result. Raises UnsupportedInvestigation or ProviderError."""
+                            indicators: IndicatorIndex | None = None, ethereum=None,
+                            base=None, solana=None) -> InvestigationResult:
+    """Run one live investigation and return the full result. Raises UnsupportedInvestigation or ProviderError.
+
+    ethereum and base are the EVM failover chains (None when no key is set for them).
+    """
     if request.method != "live_lookup":
         raise UnsupportedInvestigation(f"Method '{request.method}' cannot run on the server yet.")
     if request.mode != "crypto_investigation":
@@ -167,6 +172,15 @@ async def run_investigation(request: InvestigationRequest, provider: BitcoinProv
         if not is_txid(request.value):
             raise UnsupportedInvestigation("A transaction ID must be 64 hexadecimal characters.")
         return await _investigate_transaction(request, provider, max_nodes, indicators)
+    if request.input_type in ("ethereum_address", "ethereum_txid", "base_address", "base_txid"):
+        from app.services.ethereum_investigation import investigate_evm
+
+        chain = request.input_type.split("_")[0]
+        return await investigate_evm(request, chain, ethereum if chain == "ethereum" else base, max_nodes, indicators)
+    if request.input_type in ("solana_address", "solana_txid"):
+        from app.services.solana_investigation import investigate_solana
+
+        return await investigate_solana(request, solana, max_nodes, indicators)
     raise UnsupportedInvestigation(f"Input type '{request.input_type}' is not supported by live lookup.")
 
 
