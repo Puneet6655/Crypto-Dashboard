@@ -12,7 +12,8 @@ from pydantic import BaseModel, Field
 from app.schemas.bitcoin import DataMode
 
 Mode = Literal["scam_early_warning", "crypto_investigation", "x402"]
-InputType = Literal["url_domain", "bitcoin_address", "bitcoin_txid", "x402_payment_id"]
+InputType = Literal["url_domain", "bitcoin_address", "bitcoin_txid", "ethereum_address", "ethereum_txid",
+                    "base_address", "base_txid", "solana_address", "solana_txid", "x402_payment_id"]
 Relation = Literal["observed", "reported", "inferred"]
 
 

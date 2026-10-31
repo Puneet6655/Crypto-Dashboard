@@ -7,6 +7,8 @@ import AddToCaseMenu from "./components/AddToCaseMenu.jsx";
 import Icon from "./components/Icon.jsx";
 import { navigate, useHashRoute } from "./hooks/useHashRoute.js";
 import { useInvestigation } from "./hooks/useInvestigation.js";
+import { useLiveAlerts } from "./hooks/useLiveAlerts.js";
+import AlertsPage from "./pages/AlertsPage.jsx";
 import InvestigatePage from "./pages/InvestigatePage.jsx";
 import CasesPage from "./pages/CasesPage.jsx";
 import StatusPage from "./pages/StatusPage.jsx";
@@ -58,6 +60,7 @@ function Shell() {
   const { can } = useAuth();
   const investigation = useInvestigation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const live = useLiveAlerts({ onOpen: () => navigate("/alerts") });
 
   const known = PAGES.find((p) => p.id === route.page);
   const allowed = route.page === "account" || (known && (!known.role || can(known.role)));
@@ -71,7 +74,7 @@ function Shell() {
 
   return (
     <div className="shell">
-      <Sidebar page={page} open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <Sidebar page={page} open={menuOpen} onClose={() => setMenuOpen(false)} unseenAlerts={page === "alerts" ? 0 : live.unseen} />
       <div className="main">
         <div className="mobile-bar">
           <button type="button" className="ghost-icon" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
@@ -82,6 +85,7 @@ function Shell() {
         <main className="page">
           {page === "investigate" && <InvestigatePage investigation={investigation} />}
           {page === "cases" && <CasesPage caseId={route.params[0]} onInvestigate={investigate} />}
+          {page === "alerts" && <AlertsPage live={live} onInvestigate={investigate} />}
           {page === "status" && <StatusPage />}
           {page === "sources" && <SourcesPage />}
           {page === "bigquery" && <BigQueryPage />}

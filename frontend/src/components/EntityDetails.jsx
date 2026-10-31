@@ -2,6 +2,7 @@ import { useState } from "react";
 import { nodeTypeInfo, relationInfo } from "../config/graphStyle.js";
 import { caseItemAttrs, itemFromNode } from "../cases/caseItems.js";
 import { AddToCaseButton } from "./AddToCaseMenu.jsx";
+import HoldingsPanel from "./HoldingsPanel.jsx";
 
 // Right column: details for whatever the analyst clicked, a node or a link.
 // Every related item is a button, so you can walk the graph from here too.
@@ -66,6 +67,8 @@ function NodeDetails({ node, result, onSelect, onEvidenceClick }) {
         <dt>Data</dt>
         <dd>{result.data_mode}</dd>
       </dl>
+
+      {result.data_mode === "live" && <HoldingsPanel nodeId={node.id} />}
 
       <h3>Findings ({findings.length})</h3>
       {findings.length ? (
