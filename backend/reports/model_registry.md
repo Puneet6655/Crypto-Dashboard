@@ -1,6 +1,6 @@
 # Model registry and offline benchmark
 
-Generated 2026-11-02T09:05:40+00:00 by training/model_registry.py. Offline benchmark on Elliptic++ wallets: train steps 1-34, threshold on steps 31-34, test steps 35-49 (about Jun 2017 to Sep 2017).
+Generated 2026-11-02T09:05:40+00:00 by training/model_registry.py. Offline benchmark on Elliptic++ wallets: train steps 1-34, threshold on steps 31-34, test steps 35-49 (31 Mar to 2 Oct 2017).
 Test rows: 97,754 (5,023 illicit).
 
 ## Comparison (seed 0 model; threshold chosen on validation steps 31-34)

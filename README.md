@@ -2,8 +2,13 @@
 
 Payments Intelligence Dashboard (student project).
 
-- `frontend/`: React + Vite app. It currently shows synthetic demo data only.
-- `backend/`: Python FastAPI app for Bitcoin lookups (mempool.space, with blockstream.info as automatic backup).
+- `frontend/`: React + Vite dashboard (Investigate, Cases, Live alerts, Models, Status, Sources pages).
+- `backend/`: Python FastAPI app: live Bitcoin, Ethereum, Base and Solana lookups, threat-list checks,
+  saved cases, and offline-benchmark models with SHAP explanations. `backend/training/` builds the
+  training data and models.
+
+**New to the project? Read [docs/README.md](docs/README.md)** (setup, architecture, data sources and
+licences, ML pipeline, model dossiers, milestone status and known gaps).
 
 ## Quick start (Windows)
 
@@ -19,14 +24,13 @@ npm install
 npm run dev
 ```
 
-Backend:
+Backend (one virtual environment in the repository root, as `run.bat` uses):
 
 ```
-cd backend
 python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+.venv\Scripts\python.exe -m pip install -r backend\requirements.txt -r backend\requirements-ml.txt
+cd backend
+..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
 ## Save live data to Neon Postgres (optional)
@@ -95,6 +99,27 @@ The same check covers every website list. Each list that matches is shown with i
 - A site on a shared platform gets no credit for the platform's Tranco rank. A popular parent domain with 20 or more blacklisted subdomains, such as the site builder yolasite.com, counts as a shared platform here.
 
 From `backend/`: `..\.venv\Scripts\python.exe -m app.intelligence refresh` (or `status`, `check <address>`, or `check-site <url>`). API: `GET /api/indicators/status`, `GET /api/indicators/check/{address}`.
+
+## Graph measures (NetworkX)
+
+The **Graph measures** method runs a live lookup, then measures the graph it drew with NetworkX:
+betweenness (bridges between groups of wallets; drawn as bigger nodes), PageRank on the money flow
+(where value ends up) and degree. Each node's details show the values, and findings name the main
+bridges. The measures describe only the graph shown (first page of transactions, node limit).
+
+Clicking a Bitcoin address also offers its **transaction history**, page by page, beyond the first
+page the graph shows (`GET /api/bitcoin/address/{address}/transactions?after_txid=...`).
+
+## Models (offline benchmark)
+
+The **Models** page compares a logistic-regression baseline, Random Forest and XGBoost, each with and
+without hop features, on one fixed Elliptic++ split (train steps 1-34, threshold on 31-34, test
+35-49, three seeds), shows the alert threshold re-picked on 2017-2019 data, and scores any address
+from the benchmark dataset with a SHAP explanation. In Investigate, the **Random Forest** and
+**XGBoost** methods do the same and show the SHAP chart under "Why Flagged?". Live addresses cannot be
+scored yet, because live lookups cannot build the hop features; the dashboard says so. Models are not
+in git: build them with `..\.venv\Scripts\python.exe -m training.model_registry` from `backend/`
+(see [docs/ML_PIPELINE.md](docs/ML_PIPELINE.md)). API: `GET /api/models`, `POST /api/models/score`.
 
 ## Deploy the frontend to Vercel
 
