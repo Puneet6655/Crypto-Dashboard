@@ -66,6 +66,11 @@ export function buildStylesheet() {
       style: { "background-color": info.color, shape: info.shape },
     })),
     {
+      // Graph measures method: bridges (high NetworkX betweenness) are drawn bigger, 30px to 64px.
+      selector: "node[betweenness > 0]",
+      style: { width: "mapData(betweenness, 0, 0.5, 30, 64)", height: "mapData(betweenness, 0, 0.5, 30, 64)" },
+    },
+    {
       selector: "edge",
       style: {
         width: 2,

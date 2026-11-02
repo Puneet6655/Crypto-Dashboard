@@ -19,6 +19,7 @@ import hashlib
 import json
 import logging
 import os
+import pickle
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -64,9 +65,37 @@ def read_meta(folder: Path, source_id: str) -> dict | None:
         return None
 
 
-def load_records(folder: Path, source: IndicatorSource) -> list[Record]:
-    """Parse a saved snapshot again (raises OSError or ValueError if it is missing or broken)."""
-    return source.parse(source.decode(raw_path(folder, source.id, source.extension).read_bytes()))
+def cache_path(folder: Path, source_id: str) -> Path:
+    return folder / "cache" / f"{source_id}.pickle"
+
+
+def load_records(folder: Path, source: IndicatorSource, use_cache: bool = True) -> list[Record] | SiteList:
+    """Parse a saved snapshot again (raises OSError or ValueError if it is missing or broken).
+
+    The parsed records are kept in cache/<id>.pickle next to the snapshots, keyed by the SHA-256 of
+    the raw file and PARSER_VERSION, so the next start skips parsing (the CryptoScamDB YAML takes
+    about 7 s to parse without the C YAML parser, and about 0.1 s to read back from the cache). The
+    cache is only ever written by this function from a file it just parsed; a cache that does not
+    match the snapshot, or does not load, is ignored and rebuilt.
+    """
+    body = raw_path(folder, source.id, source.extension).read_bytes()
+    key = (PARSER_VERSION, hashlib.sha256(body).hexdigest())
+    cached = cache_path(folder, source.id)
+    if use_cache and cached.exists():
+        try:
+            saved_key, records = pickle.loads(cached.read_bytes())  # noqa: S301 - our own local cache file
+            if saved_key == key:
+                return records
+        except Exception:  # broken or from another code version: parse again
+            log.info("Rebuilding the parsed cache for %s", source.id)
+    records = source.parse(source.decode(body))
+    if use_cache:
+        try:
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            _write_atomic(cached, pickle.dumps((key, records), protocol=pickle.HIGHEST_PROTOCOL))
+        except OSError as exc:
+            log.warning("Could not save the parsed cache for %s: %s", source.id, exc)
+    return records
 
 
 def age_hours(meta: dict | None, now: datetime | None = None) -> float | None:
