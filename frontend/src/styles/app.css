@@ -373,6 +373,8 @@ button.link[data-case-type] { cursor: pointer; }
 .source-card:hover { box-shadow: var(--shadow-lg); }
 .source-card p { margin: 0; }
 .source-card.editing { grid-column: 1 / -1; border-color: #c7d7fe; }
+.source-status { display: flex; flex-wrap: wrap; gap: 6px; }
+.source-status .pill { white-space: normal; }
 .source-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
 .source-head h3 a { color: var(--text); }
 .source-head h3 a:hover { color: var(--accent); }

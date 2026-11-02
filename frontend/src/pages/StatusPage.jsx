@@ -14,6 +14,8 @@ export default function StatusPage() {
   const providers = useApi("/api/bitcoin/providers?check=true");
   const ethProviders = useApi("/api/ethereum/providers?check=true");
   const baseProviders = useApi("/api/base/providers?check=true");
+  const solProviders = useApi("/api/solana/providers?check=true");
+  const alerts = useApi("/api/alerts?limit=1");
   const history = useApi("/api/status/provider-history?limit=48");
   const lists = useApi("/api/indicators/status");
   const bigquery = useApi("/api/bigquery/status");
@@ -22,7 +24,7 @@ export default function StatusPage() {
   async function checkAll() {
     // Saves one provider health check, which the history strip below shows.
     await apiFetch("/api/bitcoin/health").catch(() => null);
-    await Promise.all([api.reload(), db.reload(), providers.reload(), ethProviders.reload(), baseProviders.reload(), lists.reload(), bigquery.reload()]);
+    await Promise.all([api.reload(), db.reload(), providers.reload(), ethProviders.reload(), baseProviders.reload(), solProviders.reload(), alerts.reload(), lists.reload(), bigquery.reload()]);
     history.reload();
   }
 
@@ -93,6 +95,8 @@ export default function StatusPage() {
               </div>
               <EvmSources title="Ethereum" query={ethProviders} />
               <EvmSources title="Base" query={baseProviders} />
+              <EvmSources title="Solana" query={solProviders} heightLabel="Slot" />
+              <LiveAlertsRow query={alerts} />
               <HealthStrip rows={history.data ?? []} />
               {providers.data.recent_fallbacks?.length > 0 && (
                 <details className="fallbacks">
@@ -108,9 +112,10 @@ export default function StatusPage() {
                 </details>
               )}
               <p className="small muted">
-                mempool.space answers first; blockstream.info takes over when it is rate limited or down.
-                Ethereum lookups use etherscan.io (3 calls per second, 100,000 a day). alchemy.com is the Ethereum
-                backup and the Base source once ALCHEMY_ENABLED is switched on.
+                Bitcoin: mempool.space answers first; blockstream.info takes over when it is rate limited or down.
+                Ethereum: etherscan.io (3 calls per second, 100,000 a day), with alchemy.com as the backup.
+                Base and Solana: alchemy.com only. Live alerts use Alchemy's WebSocket. Everything on alchemy.com
+                needs ALCHEMY_API_KEY and ALCHEMY_ENABLED=true.
                 {providers.data.cache_entries > 0 && ` ${providers.data.cache_entries} recent answers cached.`}
               </p>
             </>
@@ -182,13 +187,13 @@ function StatusCard({ icon, title, state, wide, children }) {
 }
 
 // The sources for one EVM chain, or why there are none (no API key).
-function EvmSources({ title, query }) {
+function EvmSources({ title, query, heightLabel }) {
   return (
     <>
       <div className="small muted">{title}</div>
       {query.data?.configured ? (
         <div className="provider-list">
-          {query.data.sources.map((s) => <ProviderRow key={s.provider} source={s} />)}
+          {query.data.sources.map((s) => <ProviderRow key={s.provider} source={s} heightLabel={heightLabel} />)}
         </div>
       ) : (
         <p className="small muted">{query.error ?? query.data?.detail ?? "Checking..."}</p>
@@ -197,7 +202,33 @@ function EvmSources({ title, query }) {
   );
 }
 
-function ProviderRow({ source }) {
+// Live alerts: Alchemy's WebSocket for Ethereum addresses in open cases and on the OFAC list.
+function LiveAlertsRow({ query }) {
+  const st = query.data?.status;
+  const state = query.error ? "down" : !st ? "checking" : !st.enabled ? "warn" : st.connected ? "up" : "down";
+  const detail = query.error ? query.error
+    : !st ? "Checking..."
+      : !st.enabled ? st.detail ?? "Turned off (LIVE_ALERTS_ENABLED=false)."
+        : st.connected
+          ? `Connected${st.connected_since ? ` ${timeAgo(st.connected_since)}` : ""}${st.last_event_at ? ` · last alert ${timeAgo(st.last_event_at)}` : ""}`
+          : st.last_error ?? "Not connected; it reconnects by itself.";
+  return (
+    <>
+      <div className="small muted">Live alerts (Ethereum)</div>
+      <div className="provider-list">
+        <div className="provider-row">
+          <span className={`dot dot-${state === "checking" ? "warn" : state}`} aria-hidden="true" />
+          <div className="grow">
+            <div><strong>alchemy.com</strong> <span className="tag">WebSocket</span></div>
+            <div className="small muted">{detail}</div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ProviderRow({ source, heightLabel = "Block" }) {
   const health = source.health;
   const reachable = health ? health.reachable : null;
   const state = !source.ready ? "warn" : reachable === false ? "down" : "up";
@@ -214,7 +245,7 @@ function ProviderRow({ source }) {
             ? `Cooling down for ${Math.ceil(source.cooldown_seconds_left)} s after: ${source.last_error}`
             : reachable === false
               ? health.detail
-              : health?.tip_height ? `Block ${health.tip_height.toLocaleString()}` : "Ready"}
+              : health?.tip_height ? `${heightLabel} ${health.tip_height.toLocaleString()}` : "Ready"}
           {source.last_success_at && ` · last answer ${timeAgo(source.last_success_at)}`}
         </div>
       </div>

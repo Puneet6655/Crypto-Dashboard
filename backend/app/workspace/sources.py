@@ -42,6 +42,16 @@ DEFAULT_SOURCES: list[dict] = [
         "citation": "Etherscan, Ethereum blockchain explorer API (etherscan.io).",
     },
     {
+        "name": "Alchemy API",
+        "category": "Live blockchain data",
+        "url": "https://www.alchemy.com/docs",
+        "used_for": "Solana lookups (balances, SPL tokens, transactions), Base lookups, the Ethereum backup when "
+                    "Etherscan is rate limited or down, token holdings and NFTs, and live alerts over its WebSocket. "
+                    "On only when ALCHEMY_ENABLED=true.",
+        "licence": "Free plan with a monthly compute-unit allowance; Alchemy terms of service apply.",
+        "citation": "Alchemy Insights, Inc., Alchemy blockchain APIs (alchemy.com).",
+    },
+    {
         "name": "OFAC Specially Designated Nationals (SDN) list",
         "category": "Sanctions and threat intelligence",
         "url": "https://sanctionssearch.ofac.treas.gov/",
@@ -73,6 +83,16 @@ DEFAULT_SOURCES: list[dict] = [
         "licence": "No licence stated in the repository; confirm permitted use with your supervisor.",
         "citation": "Elmougy, Y. and Liu, L. (2023). Demystifying Fraudulent Transactions and Illicit Nodes in the "
                     "Bitcoin Network for Financial Forensics. KDD '23.",
+    },
+    {
+        "name": "Elliptic2 dataset",
+        "category": "Research datasets",
+        "url": "https://www.kaggle.com/datasets/ellipticco/elliptic2-data-set",
+        "used_for": "Labelled Bitcoin money-flow subgraphs for the separate research subgraph models "
+                    "(not used to score live lookups).",
+        "licence": "CC BY-NC-ND 4.0",
+        "citation": "Bellei, C. et al. (2024). The Shape of Money Laundering: Subgraph Representation Learning on the "
+                    "Blockchain with the Elliptic2 Dataset. KDD MLF Workshop 2024.",
     },
     {
         "name": "Neon serverless Postgres",
@@ -177,7 +197,8 @@ def ensure_seeded(pool: ConnectionPool) -> None:
 # Defaults added after a database may already have been seeded. Each is added once; if an admin
 # deletes it afterwards it stays deleted.
 ADDED_LATER = ("Etherscan API V2", "CryptoScamDB", "MetaMask eth-phishing-detect", "ScamSniffer scam database",
-               "Polkadot{.js} phishing list", "Phishing.Database", "Tranco top sites list")
+               "Polkadot{.js} phishing list", "Phishing.Database", "Tranco top sites list",
+               "Alchemy API", "Elliptic2 dataset")
 
 
 def _add_later_defaults(conn) -> None:

@@ -14,6 +14,7 @@ export default function SourcesPage() {
   const { can } = useAuth();
   const toast = useToast();
   const { data, error, loading, reload } = useApi("/api/sources");
+  const statusOf = useSourceStatus();
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null); // null | "new" | source id
@@ -140,6 +141,7 @@ export default function SourcesPage() {
                       </div>
                     )}
                   </div>
+                  <SourceStatus status={statusOf(s.name)} />
                   {s.used_for && <p>{s.used_for}</p>}
                   {s.licence && <p className="small"><span className="muted">Licence: </span>{s.licence}</p>}
                   {s.citation && <p className="small citation">{s.citation}</p>}
@@ -154,6 +156,88 @@ export default function SourcesPage() {
       ))}
       {data && !groups.length && <p className="muted">No sources match.</p>}
     </>
+  );
+}
+
+// Live state of each wired-in source, from the same endpoints the Status page uses (without pinging
+// the lookup services). Matched on the built-in names; a renamed or added source just shows no state.
+const LIST_IDS = {
+  "OFAC Specially Designated Nationals (SDN) list": ["ofac_xbt", "ofac_eth", "ofac_sol"],
+  "Ransomwhere": ["ransomwhere"],
+  "CryptoScamDB": ["cryptoscamdb_blacklist", "cryptoscamdb_whitelist"],
+  "MetaMask eth-phishing-detect": ["metamask_phishing", "metamask_whitelist"],
+  "ScamSniffer scam database": ["scamsniffer_domains"],
+  "Polkadot{.js} phishing list": ["polkadot_phishing", "polkadot_allowlist"],
+  "Phishing.Database": ["phishing_database"],
+  "Tranco top sites list": ["tranco_top"],
+};
+
+function useSourceStatus() {
+  const bitcoin = useApi("/api/bitcoin/providers");
+  const ethereum = useApi("/api/ethereum/providers");
+  const base = useApi("/api/base/providers");
+  const solana = useApi("/api/solana/providers");
+  const alerts = useApi("/api/alerts?limit=1");
+  const lists = useApi("/api/indicators/status");
+  const db = useApi("/api/status/database");
+  const bigquery = useApi("/api/bigquery/status");
+
+  // One lookup source on one chain: Working, Cooling down, or Not set up.
+  const lookup = (query, provider, chain) => {
+    if (query.error) return { tone: "down", text: `${chain}: ${query.error}` };
+    if (!query.data) return null;
+    if (query.data.configured === false) return { tone: "warn", text: `${chain}: not set up` };
+    const s = query.data.sources?.find((x) => x.provider === provider);
+    if (!s) return { tone: "warn", text: `${chain}: not in use` };
+    if (s.ready === false) return { tone: "warn", text: `${chain}: cooling down` };
+    return { tone: "up", text: `${chain}: ready${s.priority > 1 ? " (backup)" : ""}` };
+  };
+
+  const listState = (ids) => {
+    if (lists.error) return [{ tone: "down", text: lists.error }];
+    if (!lists.data) return [];
+    const rows = lists.data.filter((l) => ids.includes(l.source_id));
+    if (!rows.length) return [{ tone: "warn", text: "Not loaded" }];
+    const entries = rows.reduce((n, l) => n + (l.record_count ?? 0), 0).toLocaleString();
+    const newest = rows.map((l) => l.retrieved_at).filter(Boolean).sort().pop();
+    const tone = rows.some((l) => !l.loaded) ? "down" : rows.some((l) => l.stale) ? "warn" : "up";
+    const word = tone === "down" ? "Not loaded" : tone === "warn" ? "Due for refresh" : "Fresh";
+    return [{ tone, text: `${word} · ${entries} entries${newest ? ` · downloaded ${timeAgo(newest)}` : ""}` }];
+  };
+
+  return (name) => {
+    let items = [];
+    if (name === "mempool.space REST API") items = [lookup(bitcoin, "mempool.space", "Bitcoin")];
+    else if (name.startsWith("Blockstream Esplora")) items = [lookup(bitcoin, "blockstream.info", "Bitcoin")];
+    else if (name === "Etherscan API V2") items = [lookup(ethereum, "etherscan.io", "Ethereum")];
+    else if (name === "Alchemy API") {
+      const st = alerts.data?.status;
+      items = [
+        lookup(solana, "alchemy.com", "Solana"),
+        lookup(ethereum, "alchemy.com", "Ethereum"),
+        lookup(base, "alchemy.com", "Base"),
+        st && { tone: !st.enabled ? "warn" : st.connected ? "up" : "down",
+          text: `Live alerts: ${!st.enabled ? "off" : st.connected ? "connected" : "not connected"}` },
+      ];
+    } else if (LIST_IDS[name]) items = listState(LIST_IDS[name]);
+    else if (name === "Neon serverless Postgres" && db.data) {
+      items = [db.data.connected ? { tone: "up", text: `Connected · ${db.data.latency_ms} ms` } : { tone: "down", text: "Not connected" }];
+    } else if (name.startsWith("Google BigQuery") && bigquery.data) {
+      items = [{ tone: bigquery.data.key_found && bigquery.data.library_installed ? "up" : "warn",
+        text: `Refresh in development · key ${bigquery.data.key_found ? "found" : "missing"}` }];
+    }
+    return items.filter(Boolean);
+  };
+}
+
+function SourceStatus({ status }) {
+  if (!status.length) return null;
+  return (
+    <div className="source-status">
+      {status.map((s) => (
+        <span key={s.text} className={`pill pill-${s.tone}`} title="Current state, see the Status page for health checks">{s.text}</span>
+      ))}
+    </div>
   );
 }
 

@@ -30,8 +30,10 @@ async def _answer(call):
 async def sources(check: bool = Query(False), provider: SolanaProvider | None = Depends(get_solana_provider)) -> dict:
     if provider is None:
         return {"configured": False, "detail": NO_KEY, "sources": []}
-    entry = {"name": provider.name, "requests": provider.requests, "answers": provider.answers,
-             "failures": provider.failures, "last_error": provider.last_error}
+    # Same shape as the Bitcoin and EVM source lists, so the Status page draws them the same way.
+    entry = {"provider": provider.name, "name": provider.name, "priority": 1, "ready": True,
+             "requests": provider.requests, "answers": provider.answers,
+             "failures": provider.failures, "last_error": provider.last_error, "health": None}
     if check:
         entry["health"] = (await provider.health()).model_dump(mode="json")
     return {"configured": True, "sources": [entry]}
