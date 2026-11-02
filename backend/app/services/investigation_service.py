@@ -281,7 +281,7 @@ async def _investigate_address(request: InvestigationRequest, provider: BitcoinP
         graph=builder.graph(),
         evidence=evidence + screening.evidence,
         source_timestamps={**sources, **screening.source_timestamps},
-        limitations=COMMON_LIMITATIONS + ["Only the first page of transactions is shown (paging arrives in Milestone 5)"],
+        limitations=COMMON_LIMITATIONS + ["The graph shows only the first page of transactions; click the address for older pages"],
         uncertainty={
             "unconfirmed_tx_count": summary.unconfirmed.tx_count,
             "transactions_shown": shown_tx,
