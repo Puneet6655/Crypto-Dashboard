@@ -3,6 +3,7 @@ import { nodeTypeInfo, relationInfo } from "../config/graphStyle.js";
 import { caseItemAttrs, itemFromNode } from "../cases/caseItems.js";
 import { AddToCaseButton } from "./AddToCaseMenu.jsx";
 import HoldingsPanel from "./HoldingsPanel.jsx";
+import { formatBtc, isSatsKey } from "../utils/bitcoinAmount.js";
 
 // Right column: details for whatever the analyst clicked, a node or a link.
 // Every related item is a button, so you can walk the graph from here too.
@@ -60,9 +61,10 @@ function NodeDetails({ node, result, onSelect, onEvidenceClick }) {
       <dl>
         {Object.entries(node.details ?? {}).map(([key, value]) => (
           <div key={key} className="contents">
-            <dt>{key.replaceAll("_", " ")}</dt>
+            <dt>{isSatsKey(key) ? key.slice(0, -5).replaceAll("_", " ") : key.replaceAll("_", " ")}</dt>
             <dd>
               {value === null ? "none"
+                : isSatsKey(key) && typeof value === "number" ? formatBtc(value)
                 : typeof value === "number" ? value.toLocaleString()
                 : Array.isArray(value) ? (
                   // e.g. every website list that matched, with its licence

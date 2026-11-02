@@ -3,6 +3,7 @@ import cytoscape from "cytoscape";
 import { LAYOUTS, buildStylesheet, nodeTypeInfo, relationInfo } from "../config/graphStyle.js";
 import { useCases } from "../cases/CasesContext.jsx";
 import { itemFromNode } from "../cases/caseItems.js";
+import { formatBtc } from "../utils/bitcoinAmount.js";
 
 // Turn our API's { nodes, edges } into the list Cytoscape expects:
 // every element is { data: {...} }, and an edge needs "source" and "target".
@@ -248,7 +249,9 @@ function describe(el) {
     const info = nodeTypeInfo(el.data("type"));
     const lines = [`${el.degree()} link(s)`];
     if (el.data("status")) lines.push(`Status: ${el.data("status")}`);
-    if (el.data("fee_sats") != null) lines.push(`Fee: ${el.data("fee_sats").toLocaleString()} sats`);
+    if (el.data("balance_sats") != null) lines.push(`Balance: ${formatBtc(el.data("balance_sats"))}`);
+    if (el.data("total_transferred_sats") != null) lines.push(`Transferred: ${formatBtc(el.data("total_transferred_sats"))}`);
+    if (el.data("fee_sats") != null) lines.push(`Fee: ${formatBtc(el.data("fee_sats"))}`);
     lines.push("Click for details, double-click to zoom, right-click to add to a case");
     return { kind: info.label, title: el.data("label"), lines };
   }

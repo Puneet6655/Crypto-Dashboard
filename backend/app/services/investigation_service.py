@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from app.intelligence.index import IndicatorIndex, get_indicator_index
 from app.intelligence.screening import Screening, screen_bitcoin
 from app.providers.base import BitcoinProvider
-from app.schemas.bitcoin import Provenance, TransactionSummary
+from app.schemas.bitcoin import Provenance, TransactionSummary, format_btc
 from app.schemas.investigation import (
     Evidence,
     Finding,
@@ -42,7 +42,8 @@ def _short(text: str, keep: int = 6) -> str:
 
 
 def _sats(value: int | None) -> str:
-    return "unknown amount" if value is None else f"{value:,} sats"
+    """Amount for display: BTC first, sats in brackets."""
+    return format_btc(value)
 
 
 def new_investigation_id(now: datetime) -> str:
@@ -89,7 +90,8 @@ class GraphBuilder:
             id=tx.entity_id,
             type="transaction",
             label=f"tx {_short(tx.txid)}",
-            details={"status": tx.status, "block_height": tx.block_height, "fee_sats": tx.fee_sats},
+            details={"status": tx.status, "block_height": tx.block_height,
+                     "total_transferred_sats": tx.total_output_sats, "fee_sats": tx.fee_sats},
         )
         if not self.add_node(tx_node):
             return
@@ -200,7 +202,13 @@ async def _investigate_address(request: InvestigationRequest, provider: BitcoinP
     transactions = await provider.get_address_transactions(address)
 
     builder = GraphBuilder(summary.network, max_nodes)
-    builder.add_node(builder.address_node(address))
+    builder.add_node(builder.address_node(address).model_copy(update={"details": {
+        "balance_sats": summary.balance_sats,
+        "confirmed_balance_sats": summary.confirmed.balance_sats,
+        "pending_change_sats": summary.unconfirmed.balance_sats,
+        "total_received_sats": summary.confirmed.funded_sats + summary.unconfirmed.funded_sats,
+        "total_sent_sats": summary.confirmed.spent_sats + summary.unconfirmed.spent_sats,
+    }}))
     for tx in transactions:
         builder.add_transaction(tx, evidence_id="e2")
 
@@ -216,7 +224,7 @@ async def _investigate_address(request: InvestigationRequest, provider: BitcoinP
         ),
         Finding(
             id="f2",
-            title=f"Confirmed balance {_sats(summary.confirmed.balance_sats)}; pending change {_sats(summary.unconfirmed.balance_sats)}",
+            title=f"Current balance {_sats(summary.balance_sats)} (confirmed {_sats(summary.confirmed.balance_sats)}; pending change {_sats(summary.unconfirmed.balance_sats)})",
             kind="observation",
             entity_ids=[summary.entity_id],
             evidence_ids=["e1"],
@@ -295,7 +303,14 @@ async def _investigate_transaction(request: InvestigationRequest, provider: Bitc
         ),
         Finding(
             id="f2",
-            title=f"{len(tx.inputs)} inputs ({named_inputs} with an address) and {len(tx.outputs)} outputs ({named_outputs} with an address); fee {_sats(tx.fee_sats)}",
+            title=f"Total transferred {_sats(tx.total_output_sats)}; fee {_sats(tx.fee_sats)}",
+            kind="observation",
+            entity_ids=[tx.entity_id],
+            evidence_ids=["e1"],
+        ),
+        Finding(
+            id="f3",
+            title=f"{len(tx.inputs)} inputs ({named_inputs} with an address) and {len(tx.outputs)} outputs ({named_outputs} with an address)",
             kind="observation",
             entity_ids=[tx.entity_id],
             evidence_ids=["e1"],
@@ -305,7 +320,7 @@ async def _investigate_transaction(request: InvestigationRequest, provider: Bitc
         Evidence(
             id="e1", source=f"{tx.provenance.provider} transaction", source_url=tx.provenance.source_url,
             retrieved_at=tx.provenance.retrieved_at, method_version=METHOD_VERSION,
-            excerpt=f"status={tx.status}, block_height={tx.block_height}, fee={tx.fee_sats}",
+            excerpt=f"status={tx.status}, block_height={tx.block_height}, fee={tx.fee_sats}, outputs_total={tx.total_output_sats}",
         ),
     ]
     screening: Screening = screen_bitcoin(indicators, tx.network, None, builder.addresses(),
