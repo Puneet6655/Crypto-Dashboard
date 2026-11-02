@@ -169,6 +169,16 @@ async def run_investigation(request: InvestigationRequest, provider: BitcoinProv
         if request.input_type == "bitcoin_address":
             return investigate_address_lists(request, max_nodes, index)
         raise UnsupportedInvestigation("Indicator rules check websites and Bitcoin addresses only.")
+    if request.method == "graph_measures":
+        from app.services.graph_measures import apply
+
+        live = request.model_copy(update={"method": "live_lookup"})
+        result = await run_investigation(live, provider, max_nodes, indicators, ethereum, base, solana)
+        return apply(result)
+    if request.method in ("random_forest", "xgboost"):
+        from app.ml.scoring import investigate_with_model
+
+        return investigate_with_model(request, indicators if indicators is not None else get_indicator_index())
     if request.method != "live_lookup":
         raise UnsupportedInvestigation(f"Method '{request.method}' cannot run on the server yet.")
     if request.mode != "crypto_investigation":

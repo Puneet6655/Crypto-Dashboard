@@ -357,7 +357,7 @@ button.link[data-case-type] { cursor: pointer; }
 .table td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .table tr:last-child td { border-bottom: 0; }
 .table tbody tr:hover { background: var(--surface-2); }
-.table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .row-disabled td { opacity: 0.55; }
 
 /* 16. Sources page */
@@ -474,3 +474,29 @@ button.link[data-case-type] { cursor: pointer; }
 .nft-grid li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nft-grid img, .nft-blank { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); }
 .nft-spam img, .nft-spam .nft-blank { filter: grayscale(1) blur(2px); border-color: var(--danger); }
+
+/* Models page (Milestone 12): comparison panel, scoring form and SHAP bars */
+.model-form { display: grid; gap: 10px; margin-bottom: 8px; }
+.model-form label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.row-best td { background: var(--ok-soft); }
+.metric-bar { display: inline-block; width: 48px; height: 6px; border-radius: 3px; background: var(--surface-2); vertical-align: middle; margin-right: 6px; overflow: hidden; }
+.metric-bar span { display: block; height: 100%; background: var(--accent, #2563eb); }
+.score-result { display: grid; gap: 8px; margin-top: 10px; }
+.score-badge { display: flex; align-items: baseline; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+.score-badge strong { font-size: 26px; font-variant-numeric: tabular-nums; }
+.score-badge.flagged { background: var(--danger-soft); color: var(--danger); }
+.score-badge.clear { background: var(--ok-soft); color: var(--ok); }
+.shap { display: grid; gap: 6px; }
+.shap-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.shap-row { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(80px, 1fr) 64px; gap: 8px; align-items: center; font-size: 13px; }
+.shap-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shap-track { position: relative; height: 14px; background: linear-gradient(to right, transparent calc(50% - 1px), var(--border) calc(50% - 1px), var(--border) calc(50% + 1px), transparent calc(50% + 1px)); }
+.shap-bar { position: absolute; top: 2px; bottom: 2px; border-radius: 2px; }
+.shap-bar.up, .shap-key.up { background: #dc2626; }
+.shap-bar.down, .shap-key.down { background: #2563eb; }
+.shap-value { text-align: right; font-variant-numeric: tabular-nums; }
+.shap-value.up { color: #b91c1c; }
+.shap-value.down { color: #1d4ed8; }
+.shap-key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 8px; vertical-align: middle; }
+@media (max-width: 600px) { .shap-row { grid-template-columns: 1fr 64px; } .shap-track { grid-column: 1 / -1; grid-row: 2; } }
+.why-model { display: grid; gap: 6px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }

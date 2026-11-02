@@ -12,6 +12,7 @@ import AlertsPage from "./pages/AlertsPage.jsx";
 import InvestigatePage from "./pages/InvestigatePage.jsx";
 import CasesPage from "./pages/CasesPage.jsx";
 import StatusPage from "./pages/StatusPage.jsx";
+import ModelsPage from "./pages/ModelsPage.jsx";
 import SourcesPage from "./pages/SourcesPage.jsx";
 import BigQueryPage from "./pages/BigQueryPage.jsx";
 import UsersPage from "./pages/UsersPage.jsx";
@@ -86,6 +87,7 @@ function Shell() {
           {page === "investigate" && <InvestigatePage investigation={investigation} />}
           {page === "cases" && <CasesPage caseId={route.params[0]} onInvestigate={investigate} />}
           {page === "alerts" && <AlertsPage live={live} onInvestigate={investigate} />}
+          {page === "models" && <ModelsPage />}
           {page === "status" && <StatusPage />}
           {page === "sources" && <SourcesPage />}
           {page === "bigquery" && <BigQueryPage />}

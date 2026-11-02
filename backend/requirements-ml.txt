@@ -11,3 +11,5 @@ db-dtypes==1.9.0
 scikit-learn==1.9.1
 xgboost==3.4.1
 joblib==1.6.0
+# SHAP explanations for the Models page and the model methods (app/ml/explain.py)
+shap==0.54.1
