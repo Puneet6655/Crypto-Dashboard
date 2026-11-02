@@ -255,7 +255,7 @@ def main() -> None:
     registry = {
         "generated_utc": now.isoformat(timespec="seconds"),
         "benchmark": ("Offline benchmark on Elliptic++ wallets: train steps 1-34, threshold on steps 31-34, "
-                      "test steps 35-49 (about Jun 2017 to Sep 2017)"),
+                      "test steps 35-49 (31 Mar to 2 Oct 2017)"),
         "positive_class": "illicit (Elliptic++ class 1)",
         "test_rows": int(len(test)), "test_illicit": int(test.label.sum()),
         "models": models,
