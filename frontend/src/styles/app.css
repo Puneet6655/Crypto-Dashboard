@@ -500,3 +500,5 @@ button.link[data-case-type] { cursor: pointer; }
 .shap-key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 8px; vertical-align: middle; }
 @media (max-width: 600px) { .shap-row { grid-template-columns: 1fr 64px; } .shap-track { grid-column: 1 / -1; grid-row: 2; } }
 .why-model { display: grid; gap: 6px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.amount-in { color: var(--ok); font-variant-numeric: tabular-nums; }
+.amount-out { color: var(--danger); font-variant-numeric: tabular-nums; }

@@ -62,6 +62,32 @@ async def lookup_address(
     return summary
 
 
+@router.get("/address/{address}/transactions", response_model=list[TransactionSummary])
+async def address_transactions(
+    address: str,
+    background: BackgroundTasks,
+    after_txid: str | None = Query(None, description="Last confirmed txid of the previous page; omit for the newest page"),
+    provider: BitcoinProvider = Depends(get_bitcoin_provider),
+    store: NullStore = Depends(get_store),
+) -> list[TransactionSummary]:
+    """One page of an address's transactions, newest first (Milestone 5 paging).
+
+    The first page holds unconfirmed transactions plus the newest confirmed ones (50 on mempool.space,
+    25 on blockstream.info); pass the last txid of a page as after_txid for the next 25 confirmed ones.
+    An empty list means there are no more."""
+    if not is_bitcoin_address(address):
+        raise HTTPException(status_code=422, detail="That does not look like a mainnet Bitcoin address.")
+    if after_txid is not None and not is_txid(after_txid):
+        raise HTTPException(status_code=422, detail="after_txid must be 64 hexadecimal characters.")
+    try:
+        page = await provider.get_address_transactions(normalize_address(address),
+                                                       after_txid.lower() if after_txid else None)
+    except ProviderError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message, headers=exc.headers())
+    background.add_task(run_safely, store.save_transactions, page)
+    return page
+
+
 @router.get("/address/{address}/history")
 async def address_history(
     address: str,

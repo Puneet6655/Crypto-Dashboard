@@ -3,6 +3,7 @@ import { nodeTypeInfo, relationInfo } from "../config/graphStyle.js";
 import { caseItemAttrs, itemFromNode } from "../cases/caseItems.js";
 import { AddToCaseButton } from "./AddToCaseMenu.jsx";
 import HoldingsPanel from "./HoldingsPanel.jsx";
+import BitcoinActivity from "./BitcoinActivity.jsx";
 import { formatBtc, isSatsKey } from "../utils/bitcoinAmount.js";
 
 // Right column: details for whatever the analyst clicked, a node or a link.
@@ -78,6 +79,7 @@ function NodeDetails({ node, result, onSelect, onEvidenceClick }) {
       </dl>
 
       {result.data_mode === "live" && <HoldingsPanel nodeId={node.id} />}
+      {result.data_mode !== "synthetic" && <BitcoinActivity nodeId={node.id} />}
 
       <h3>Findings ({findings.length})</h3>
       {findings.length ? (
