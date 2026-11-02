@@ -8,8 +8,9 @@ from fastapi import Depends, FastAPI
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.alerts.watcher import AlertWatcher, set_watcher
-from app.alerts.watchlist import make_loader
+from app.alerts.poller import BITCOIN, SOLANA, PollingWatcher, bitcoin_fetch, solana_fetch
+from app.alerts.watcher import AlertWatcher, set_chain_watcher, set_watcher
+from app.alerts.watchlist import make_chain_loader, make_loader
 from app.api.routes import admin, alerts, auth, bigquery, bitcoin, cases, ethereum, indicators, investigations, solana, sources, system_status
 from app.auth.deps import require_viewer
 from app.config import get_settings
@@ -36,7 +37,29 @@ async def lifespan(app: FastAPI):
                                make_loader(lambda: app.state.store, settings.live_alerts_watch_ofac))
         set_watcher(watcher)
         watcher_task = asyncio.create_task(watcher.run())
+    # Solana (Alchemy) and Bitcoin (mempool.space) watch the hand-made watchlist by polling (app/alerts/poller.py).
+    pollers = {}
+    if settings.live_alerts_enabled:
+        from app.providers.registry import shared_bitcoin_provider, shared_solana_provider
+
+        btc = shared_bitcoin_provider(settings.btc_providers, settings.btc_provider_base_url,
+                                      settings.btc_esplora_base_url, settings.btc_network,
+                                      settings.http_timeout_seconds)
+        pollers["bitcoin"] = PollingWatcher(BITCOIN, bitcoin_fetch(btc), make_chain_loader(lambda: app.state.store, "bitcoin"))
+        if settings.alchemy_enabled and settings.alchemy_api_key:
+            sol = shared_solana_provider(settings.alchemy_api_key, settings.http_timeout_seconds)
+            pollers["solana"] = PollingWatcher(SOLANA, solana_fetch(sol), make_chain_loader(lambda: app.state.store, "solana"))
+    poller_tasks = []
+    for chain, poller in pollers.items():
+        set_chain_watcher(chain, poller)
+        poller_tasks.append(asyncio.create_task(poller.run()))
     yield
+    for task in poller_tasks:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    for chain in pollers:
+        set_chain_watcher(chain, None)
     if watcher_task is not None:
         watcher_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
