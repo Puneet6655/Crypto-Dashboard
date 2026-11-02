@@ -74,5 +74,5 @@ bytes about 60 times). Referencing the same table twice in one query lost the pr
 15 GB): read each table once per query. A rerun within 24 hours reuses BigQuery's stored results.
 Do not create datasets or tables in the Google project; the pipeline keeps everything local.
 
-The Google service-account key is `backend/data/certain-voyager-512206-j5-*.json` on the original
+The Google service-account key is the single `*.json` file in `backend/data/` on the original
 PC (gitignored). Never print or commit it.
