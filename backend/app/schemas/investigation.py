@@ -101,3 +101,5 @@ class InvestigationResult(BaseModel):
     limitations: list[str]
     uncertainty: dict[str, int | bool | str]
     scorecard: Scorecard
+    # Model methods only (app/ml/scoring.py): score, threshold, registry entry and the SHAP explanation.
+    explanation: dict | None = None
