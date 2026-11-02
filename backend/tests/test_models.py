@@ -36,6 +36,17 @@ LICIT = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"
 RANSOM = "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy"
 
 
+@pytest.fixture(autouse=True)
+def _restore_overrides():
+    """Do not leave the fake provider and store behind for later test files."""
+    from app.providers.registry import get_bitcoin_provider
+    from app.store import get_store
+
+    yield
+    app.dependency_overrides.pop(get_bitcoin_provider, None)
+    app.dependency_overrides.pop(get_store, None)
+
+
 def synthetic(n=400, seed=0) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     X = pd.DataFrame({"f_amount": rng.lognormal(0, 2, n), "f_count": rng.poisson(5, n).astype(float),

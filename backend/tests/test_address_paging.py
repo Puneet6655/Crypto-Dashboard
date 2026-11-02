@@ -1,16 +1,26 @@
 """Milestone 5 paging: GET /api/bitcoin/address/{address}/transactions?after_txid=..."""
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.providers.bitcoin_mempool import MempoolSpaceProvider
 from app.providers.registry import get_bitcoin_provider
+from app.store import get_store
 from tests.fixtures.mempool_synthetic import SYNTHETIC_ADDRESS, TX_RESPONSE
 from tests.test_bitcoin_lookup import use_fake_store
 
 client = TestClient(app)
 FIRST, SECOND = "1" * 64, "2" * 64
 seen: list[str] = []
+
+
+@pytest.fixture(autouse=True)
+def _restore_overrides():
+    """Do not leave the fake provider and store behind for later test files."""
+    yield
+    app.dependency_overrides.pop(get_bitcoin_provider, None)
+    app.dependency_overrides.pop(get_store, None)
 
 
 def fake(request: httpx.Request) -> httpx.Response:
