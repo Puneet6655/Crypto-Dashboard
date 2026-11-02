@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { caseItemAttrs, itemFromNode } from "../cases/caseItems.js";
+import ShapChart from "./ShapChart.jsx";
 
 export const TABS = ["Findings", "Why Flagged?", "Evidence", "Provenance", "Explanation", "Evidence Assessment"];
 
@@ -75,6 +76,18 @@ export default function ResultTabs({ result, active, onTabChange: setActive, hig
               </li>
             ))}
           </ul>
+        )}
+
+        {active === "Why Flagged?" && result.explanation && (
+          <div className="why-model">
+            <p>
+              <strong>{result.explanation.model.name}</strong>: score {result.explanation.score.toFixed(3)},{" "}
+              {result.explanation.flagged ? "at or above" : "below"} its threshold {result.explanation.threshold.toFixed(2)}.{" "}
+              <span className="pill pill-dev">offline benchmark</span>
+            </p>
+            <p className="small muted">{result.explanation.note}</p>
+            <ShapChart explanation={result.explanation.explanation} />
+          </div>
         )}
 
         {active === "Why Flagged?" && (

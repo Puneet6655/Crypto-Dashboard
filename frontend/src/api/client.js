@@ -79,6 +79,8 @@ export function startInvestigation({ mode, inputType, value, method }, { signal 
     method: "POST",
     body: { mode, input_type: inputType, value: value.trim(), method },
     signal,
+    // Model methods load a saved model and compute SHAP on first use, which can take longer.
+    timeoutMs: ["random_forest", "xgboost"].includes(method) ? 120000 : undefined,
   });
 }
 

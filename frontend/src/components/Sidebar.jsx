@@ -7,6 +7,7 @@ export const PAGES = [
   { id: "investigate", label: "Investigate", icon: "investigate", hint: "Look up addresses and transactions" },
   { id: "cases", label: "Cases", icon: "cases", hint: "Group what you want to follow up" },
   { id: "alerts", label: "Live alerts", icon: "bell", hint: "Case and OFAC addresses moving money now" },
+  { id: "models", label: "Models", icon: "shield", hint: "Random Forest vs XGBoost, offline benchmark and SHAP" },
   { id: "status", label: "Status", icon: "status", hint: "Live lookups, database, sanction lists" },
   { id: "sources", label: "Sources", icon: "sources", hint: "Data and software we rely on" },
   { id: "bigquery", label: "BigQuery refresh", icon: "bigquery", hint: "Load new transaction data", badge: "Dev" },

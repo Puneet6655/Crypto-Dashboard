@@ -29,6 +29,8 @@ class Settings:
     indicators_dir: Path = BACKEND_DIR / "data" / "raw" / "indicators"
     indicators_auto_refresh: bool = True
     indicators_max_age_hours: float = 24.0
+    # Trained models, registry.json and scoring_rows.parquet from training/model_registry.py (gitignored).
+    models_dir: Path = BACKEND_DIR / "models"
     # Ethereum lookups (Etherscan API V2). Empty key = Ethereum lookups are switched off.
     # repr=False keeps the key out of logs and error pages that print the settings.
     etherscan_api_key: str | None = field(default=None, repr=False)
@@ -76,6 +78,7 @@ def get_settings() -> Settings:
         indicators_dir=Path(os.getenv("INDICATORS_DIR") or BACKEND_DIR / "data" / "raw" / "indicators"),
         indicators_auto_refresh=os.getenv("INDICATORS_AUTO_REFRESH", "true").strip().lower() not in ("0", "false", "no"),
         indicators_max_age_hours=float(os.getenv("INDICATORS_MAX_AGE_HOURS", "24")),
+        models_dir=Path(os.getenv("MODELS_DIR") or BACKEND_DIR / "models"),
         etherscan_api_key=(os.getenv("ETHERSCAN_API_KEY") or "").strip() or None,
         etherscan_base_url=os.getenv("ETHERSCAN_BASE_URL", "https://api.etherscan.io/v2/api").rstrip("/"),
         eth_chain_id=int(os.getenv("ETH_CHAIN_ID", "1")),
