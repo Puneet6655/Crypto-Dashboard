@@ -10,7 +10,7 @@ if not exist ".venv\Scripts\python.exe" (
     echo Creating Python environment...
     python -m venv .venv || goto :fail
 )
-".venv\Scripts\python.exe" -c "import fastapi, uvicorn, httpx, psycopg, psycopg_pool, dotenv" 2>nul
+".venv\Scripts\python.exe" -c "import fastapi, uvicorn, httpx, psycopg, psycopg_pool, dotenv, networkx" 2>nul
 if errorlevel 1 (
     echo Installing backend packages...
     ".venv\Scripts\python.exe" -m pip install -r backend\requirements.txt || goto :fail
