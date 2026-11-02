@@ -4,13 +4,14 @@ import { useToast } from "../components/Toasts.jsx";
 
 const POLL_SECONDS = 20;
 
-// Asks the API for new live alerts (watched case and OFAC addresses moving money on Ethereum)
+// Asks the API for new live alerts (watched addresses moving money on Ethereum, Solana or Bitcoin)
 // every 20 seconds and shows a toast for each new one. The API holds the WebSocket to Alchemy,
 // so the key never reaches the browser.
 export function useLiveAlerts({ onOpen } = {}) {
   const toast = useToast();
   const [alerts, setAlerts] = useState([]);
   const [status, setStatus] = useState(null);
+  const [statuses, setStatuses] = useState(null);
   const [unseen, setUnseen] = useState(0);
   const lastId = useRef(0);
   const first = useRef(true);
@@ -21,6 +22,7 @@ export function useLiveAlerts({ onOpen } = {}) {
     try {
       const body = await apiFetch(`/api/alerts?after_id=${lastId.current}&limit=200`);
       setStatus(body.status);
+      setStatuses(body.statuses ?? null);
       if (!body.alerts.length) return;
       lastId.current = Math.max(lastId.current, ...body.alerts.map((a) => a.id));
       setAlerts((old) => [...body.alerts, ...old].slice(0, 200));
@@ -29,7 +31,8 @@ export function useLiveAlerts({ onOpen } = {}) {
         setUnseen((n) => n + body.alerts.length);
         for (const a of body.alerts.slice(0, 3)) {
           const who = a.watched[0]?.reasons[0] ?? "watched address";
-          toast(`${a.sanctioned ? "Sanctioned address" : "Watched address"} ${a.direction === "out" ? "sent" : "received"} ${a.value_eth} ETH (${who})`, {
+          const moved = a.direction ? `${a.direction === "out" ? "sent" : "received"} ${a.amount ?? ""} ${a.unit}` : `made a ${a.unit} transaction`;
+          toast(`${a.sanctioned ? "Sanctioned address" : "Watched address"} ${moved} (${who})`, {
             tone: a.sanctioned ? "error" : "info", timeout: 10000,
             action: openRef.current ? { label: "View", onClick: () => openRef.current(a) } : undefined,
           });
@@ -48,5 +51,5 @@ export function useLiveAlerts({ onOpen } = {}) {
     return () => clearInterval(timer);
   }, [poll]);
 
-  return { alerts, status, unseen, markSeen: () => setUnseen(0), reload: poll };
+  return { alerts, status, statuses, unseen, markSeen: () => setUnseen(0), reload: poll };
 }
