@@ -502,3 +502,29 @@ button.link[data-case-type] { cursor: pointer; }
 .why-model { display: grid; gap: 6px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
 .amount-in { color: var(--ok); font-variant-numeric: tabular-nums; }
 .amount-out { color: var(--danger); font-variant-numeric: tabular-nums; }
+
+/* 21. Graph explorer (advanced graph mode; Sigma draws with WebGL inside .sigma-canvas) */
+.explorer-layout { display: grid; grid-template-columns: 270px minmax(0, 1fr) 300px; gap: calc(var(--space) * 2); align-items: start; }
+.explorer-main { display: grid; gap: var(--space); }
+.explorer-main .graph-toolbar { margin-bottom: 0; align-items: center; }
+.explorer-search { display: flex; }
+.sigma-wrap { position: relative; }
+.sigma-canvas { height: 620px; width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fbfcfe; outline: none; }
+.sigma-canvas:focus-visible { border-color: var(--accent); }
+.sigma-empty { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 1; }
+.cap-meter { height: 4px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.cap-meter span { display: block; height: 100%; background: var(--accent); transition: width 0.3s ease; }
+.cap-meter .warn-bar { background: #f59e0b; }
+.cap-meter .full-bar { background: var(--danger); }
+.notice-warn { background: var(--warn-soft); border-color: #f5c46b; color: var(--warn); }
+.notice-error { background: var(--danger-soft); border-color: #f1a9a0; color: var(--danger); }
+.small-spinner { width: 14px; height: 14px; border-width: 2px; }
+.member-list { gap: 2px; margin-top: var(--space); }
+@media (max-width: 1280px) {
+  .explorer-layout { grid-template-columns: 260px minmax(0, 1fr); }
+  .explorer-layout > .details { grid-column: 1 / -1; }
+}
+@media (max-width: 900px) {
+  .explorer-layout { grid-template-columns: 1fr; }
+  .sigma-canvas { height: 480px; }
+}

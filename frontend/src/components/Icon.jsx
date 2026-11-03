@@ -7,6 +7,7 @@ export const IMAGE_ICONS = ["brand", "investigate", "cases", "status", "sources"
 
 const PATHS = {
   brand: "M12 2 3 6v6c0 5 3.8 9.4 9 10 5.2-.6 9-5 9-10V6l-9-4Zm-3 9.5 2 2 4-4.5",
+  graph: "M8 6h8M7 8l4 8M17 8l-4 8M6 4a2 2 0 1 1 0 4 2 2 0 0 1 0-4Zm12 0a2 2 0 1 1 0 4 2 2 0 0 1 0-4Zm-6 12a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z",
   investigate: "M10.5 3a7.5 7.5 0 1 0 4.6 13.4L21 22M10.5 7v7M7 10.5h7",
   cases: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Zm6 6h6",
   status: "M3 12h4l2-6 4 12 2-6h6",

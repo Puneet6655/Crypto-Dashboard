@@ -84,6 +84,44 @@ export function startInvestigation({ mode, inputType, value, method }, { signal 
   });
 }
 
+// POST /api/graph/expand (advanced graph mode). The answer is a stream of JSON lines; each one is
+// passed to onEvent as soon as it arrives, so the graph can grow while the rest is still loading.
+// Resolves when the stream ends. Pass { signal } to stop it (the backend stops fetching too).
+export async function streamGraphExpand(body, { signal, onEvent }) {
+  const headers = { "Content-Type": "application/json" };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/graph/expand`, {
+      method: "POST", headers, body: JSON.stringify(body), signal,
+    });
+  } catch (err) {
+    if (err.name === "AbortError") throw err;
+    throw new Error(`Cannot reach the API at ${API_BASE_URL}. Is the backend running?`);
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    if (response.status === 401 && token) window.dispatchEvent(new Event(SESSION_ENDED_EVENT));
+    throw new Error(describeError(response.status, data));
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline;
+    while ((newline = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (line) onEvent(JSON.parse(line));
+    }
+  }
+  if (buffer.trim()) onEvent(JSON.parse(buffer));
+}
+
 // Turn an HTTP error into one readable sentence.
 function describeError(status, body) {
   const detail = body?.detail;

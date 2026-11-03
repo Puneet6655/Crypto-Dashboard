@@ -100,6 +100,18 @@ The same check covers every website list. Each list that matches is shown with i
 
 From `backend/`: `..\.venv\Scripts\python.exe -m app.intelligence refresh` (or `status`, `check <address>`, or `check-site <url>`). API: `GET /api/indicators/status`, `GET /api/indicators/check/{address}`.
 
+## Graph explorer (advanced graph mode)
+
+The **Graph explorer** page (`#/graph`, or the "Advanced graph" button on an Investigate result for an address) grows a graph of thousands of addresses on Bitcoin, Ethereum, Base or Solana:
+
+- **Step by step.** Load 1 or 2 hops around an address, then double-click any node (or press "Expand" in its details) to grow it. "Expand all" expands every address not expanded yet, up to the per-request limit below.
+- **Node cap.** Set in the form (default 5,000, at most `GRAPH_MAX_NODES`, default 20,000). A bar and a warning show from 80% of the cap; at the cap, expanding stops until you raise it or clear the graph.
+- **WebGL drawing.** Sigma.js draws the graph with WebGL, and the ForceAtlas2 layout runs in a background thread (web worker), so the page stays responsive at thousands of nodes. The page's code loads only when it is opened.
+- **Summary nodes.** Each address shows its top counterparties (the "Shown per address" slider, default 40). Dust and zero-value counterparties (often address poisoning or spam) become one grey group, and the rest one "+N more" group; click a group and press "Open" to draw 100 of its members at a time, with no API call. Busy addresses (150+ counterparties, or a full page of history within one day: exchanges, services, mixers, popular contracts) are marked as hubs, show only 10 counterparties and are not expanded further by 2-hop loads. There is no exchange label list behind this: "hub" is a heuristic. Addresses on a sanctions or scam list are always drawn on their own.
+- **Streaming.** `POST /api/graph/expand` answers with one JSON line per fetched address (NDJSON), so the graph grows while the rest load. "Stop" cancels the request and the backend stops fetching.
+- **Rate limits and cost.** Each address is cached for 10 minutes and concurrent requests for the same address share one fetch. Bitcoin (mempool.space, blockstream.info as backup): at most 2 calls at a time, 0.4 s apart, 60 addresses per request. Ethereum: Etherscan first (paced at 3 calls a second), 40 addresses per request, two calls each. Base and Solana use Alchemy (about 480 and 640 compute units per address), so they fetch at most 15 and 8 addresses per request, and graph mode has its own daily Alchemy allowance (`GRAPH_ALCHEMY_DAILY_CU`, default 300,000, about 9M of the free plan's 30M a month); when it is used up, Alchemy-backed expansion stops until midnight UTC. `GET /api/graph/status` shows the allowance and cache.
+- **Limits.** Each address's counterparties come from its newest history only (Bitcoin: one page of 25 to 50 transactions; Ethereum: the newest 1,000 transactions and token transfers; Solana: the newest 15 transactions), and amounts are what that history shows between the two addresses, not balances.
+
 ## Graph measures (NetworkX)
 
 The **Graph measures** method runs a live lookup, then measures the graph it drew with NetworkX:
