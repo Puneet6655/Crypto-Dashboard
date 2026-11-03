@@ -44,6 +44,10 @@ class Settings:
     # Live alerts over Alchemy's WebSocket for case and OFAC addresses (needs alchemy_enabled).
     live_alerts_enabled: bool = True
     live_alerts_watch_ofac: bool = True
+    # Advanced graph mode: its own daily share of the Alchemy free plan (30M CU a month), and the
+    # largest node cap the browser may ask for.
+    graph_alchemy_daily_cu: int = 300_000
+    graph_max_nodes: int = 20_000
 
 
 def _provider_list(value: str) -> tuple[str, ...]:
@@ -86,6 +90,8 @@ def get_settings() -> Settings:
         alchemy_enabled=os.getenv("ALCHEMY_ENABLED", "false").strip().lower() in ("1", "true", "yes"),
         live_alerts_enabled=os.getenv("LIVE_ALERTS_ENABLED", "true").strip().lower() not in ("0", "false", "no"),
         live_alerts_watch_ofac=os.getenv("LIVE_ALERTS_WATCH_OFAC", "true").strip().lower() not in ("0", "false", "no"),
+        graph_alchemy_daily_cu=int(os.getenv("GRAPH_ALCHEMY_DAILY_CU", "300000")),
+        graph_max_nodes=int(os.getenv("GRAPH_MAX_NODES", "20000")),
     )
 
 

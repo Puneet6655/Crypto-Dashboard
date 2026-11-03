@@ -10,8 +10,11 @@
   },
   "dependencies": {
     "cytoscape": "3.33.1",
+    "graphology": "0.26.0",
+    "graphology-layout-forceatlas2": "0.10.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "sigma": "3.0.3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "6.1.2",

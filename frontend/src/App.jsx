@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Suspense, lazy, useState } from "react";
 import { AuthProvider, useAuth } from "./auth/AuthContext.jsx";
 import { CasesProvider } from "./cases/CasesContext.jsx";
 import { ToastProvider } from "./components/Toasts.jsx";
@@ -18,6 +18,9 @@ import BigQueryPage from "./pages/BigQueryPage.jsx";
 import UsersPage from "./pages/UsersPage.jsx";
 import AccountPage from "./pages/AccountPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+
+// Graph explorer pulls in WebGL drawing (Sigma) and a layout worker: load it only when opened.
+const GraphExplorerPage = lazy(() => import("./pages/GraphExplorerPage.jsx"));
 
 export default function App() {
   return (
@@ -85,6 +88,11 @@ function Shell() {
         </div>
         <main className="page">
           {page === "investigate" && <InvestigatePage investigation={investigation} />}
+          {page === "graph" && (
+            <Suspense fallback={<div className="card state">Loading the graph explorer...</div>}>
+              <GraphExplorerPage route={route} />
+            </Suspense>
+          )}
           {page === "cases" && <CasesPage caseId={route.params[0]} onInvestigate={investigate} />}
           {page === "alerts" && <AlertsPage live={live} onInvestigate={investigate} />}
           {page === "models" && <ModelsPage />}

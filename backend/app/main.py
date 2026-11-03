@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.alerts.poller import BITCOIN, SOLANA, PollingWatcher, bitcoin_fetch, solana_fetch
 from app.alerts.watcher import AlertWatcher, set_chain_watcher, set_watcher
 from app.alerts.watchlist import make_chain_loader, make_loader
-from app.api.routes import admin, alerts, auth, bigquery, bitcoin, cases, ethereum, indicators, investigations, models, solana, sources, system_status
+from app.api.routes import admin, alerts, auth, bigquery, bitcoin, cases, ethereum, graph, indicators, investigations, models, solana, sources, system_status
 from app.auth.deps import require_viewer
 from app.config import get_settings
 from app.db import NullStore, open_store
@@ -94,6 +94,7 @@ app.include_router(system_status.router, dependencies=signed_in)
 app.include_router(alerts.router, dependencies=signed_in)
 app.include_router(solana.router, dependencies=signed_in)
 app.include_router(models.router, dependencies=signed_in)
+app.include_router(graph.router, dependencies=signed_in)
 app.include_router(cases.router)
 app.include_router(sources.router)
 app.include_router(bigquery.router)

@@ -5,6 +5,7 @@ import Icon from "./Icon.jsx";
 // The pages in the side panel. "role" hides a page from people without that role.
 export const PAGES = [
   { id: "investigate", label: "Investigate", icon: "investigate", hint: "Look up addresses and transactions" },
+  { id: "graph", label: "Graph explorer", icon: "graph", hint: "Advanced graph mode: thousands of nodes, expand step by step" },
   { id: "cases", label: "Cases", icon: "cases", hint: "Group what you want to follow up" },
   { id: "alerts", label: "Live alerts", icon: "bell", hint: "Case and OFAC addresses moving money now" },
   { id: "models", label: "Models", icon: "shield", hint: "Random Forest vs XGBoost, offline benchmark and SHAP" },

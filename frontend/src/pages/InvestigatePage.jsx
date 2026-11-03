@@ -20,6 +20,11 @@ export default function InvestigatePage({ investigation: inv }) {
         subtitle="Look up a Bitcoin address or transaction, or open a demo case. Right-click any address or transaction to add it to a case."
       >
         {subject && <AddToCaseButton item={subject} />}
+        {graphLink(result) && (
+          <a className="secondary" href={graphLink(result)} title="Open this address in advanced graph mode (thousands of nodes)">
+            Advanced graph
+          </a>
+        )}
         <span className={`data-badge data-${result?.data_mode ?? "none"}`}>
           Data: {result ? result.data_mode.toUpperCase() : "none yet"}
         </span>
@@ -61,6 +66,13 @@ export default function InvestigatePage({ investigation: inv }) {
       />
     </>
   );
+}
+
+// #/graph/<chain>/<address> when the investigation was about an address graph mode supports.
+function graphLink(result) {
+  const { type, value } = result?.input ?? {};
+  const chain = ["bitcoin", "ethereum", "base", "solana"].find((c) => type === `${c}_address`);
+  return chain && value ? `#/graph/${chain}/${encodeURIComponent(value)}` : null;
 }
 
 // The address or transaction the investigation started from, as a case item.
