@@ -41,6 +41,8 @@ class Settings:
     alchemy_endpoint: str | None = field(default=None, repr=False)
     # Off until the user approves using Alchemy (2026-10-31): the key alone does not switch it on.
     alchemy_enabled: bool = False
+    # Day of the month the Alchemy plan's monthly compute-unit allowance starts again (1-28).
+    alchemy_billing_day: int = 1
     # Live alerts over Alchemy's WebSocket for case and OFAC addresses (needs alchemy_enabled).
     live_alerts_enabled: bool = True
     live_alerts_watch_ofac: bool = True
@@ -84,6 +86,7 @@ def get_settings() -> Settings:
         eth_chain_id=int(os.getenv("ETH_CHAIN_ID", "1")),
         **_alchemy_settings(os.getenv("ALCHEMY_API_KEY"), os.getenv("ALCHEMY_ENDPOINT")),
         alchemy_enabled=os.getenv("ALCHEMY_ENABLED", "false").strip().lower() in ("1", "true", "yes"),
+        alchemy_billing_day=int(os.getenv("ALCHEMY_BILLING_DAY", "1") or 1),
         live_alerts_enabled=os.getenv("LIVE_ALERTS_ENABLED", "true").strip().lower() not in ("0", "false", "no"),
         live_alerts_watch_ofac=os.getenv("LIVE_ALERTS_WATCH_OFAC", "true").strip().lower() not in ("0", "false", "no"),
     )

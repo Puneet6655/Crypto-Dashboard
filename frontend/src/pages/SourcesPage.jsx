@@ -5,6 +5,7 @@ import { useApi } from "../hooks/useApi.js";
 import PageHeader, { timeAgo } from "../components/PageHeader.jsx";
 import Icon from "../components/Icon.jsx";
 import { useToast } from "../components/Toasts.jsx";
+import { UsageMeter, usageIdFor } from "../components/ApiUsage.jsx";
 
 const EMPTY = { name: "", category: "", url: "", used_for: "", licence: "", citation: "" };
 
@@ -15,6 +16,8 @@ export default function SourcesPage() {
   const toast = useToast();
   const { data, error, loading, reload } = useApi("/api/sources");
   const statusOf = useSourceStatus();
+  const usage = useApi("/api/status/usage");
+  const usageOf = (name) => usage.data?.sources.find((u) => u.id === usageIdFor(name));
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null); // null | "new" | source id
@@ -142,6 +145,7 @@ export default function SourcesPage() {
                     )}
                   </div>
                   <SourceStatus status={statusOf(s.name)} />
+                  <UsageMeter source={usageOf(s.name)} compact />
                   {s.used_for && <p>{s.used_for}</p>}
                   {s.licence && <p className="small"><span className="muted">Licence: </span>{s.licence}</p>}
                   {s.citation && <p className="small citation">{s.citation}</p>}

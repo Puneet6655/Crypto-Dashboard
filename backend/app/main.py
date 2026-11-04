@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.db import NullStore, open_store
 from app.intelligence.refresher import keep_indicators_fresh
 from app.store import get_store
+from app.usage import keep_saving, meter
 
 logging.basicConfig(level=logging.INFO)
 
@@ -27,6 +28,8 @@ async def lifespan(app: FastAPI):
     On stop: disconnect and stop the refresher."""
     settings = get_settings()
     app.state.store = await run_in_threadpool(open_store, settings.database_url)
+    await run_in_threadpool(meter.attach, app.state.store)
+    usage_saver = asyncio.create_task(keep_saving())
     refresher = None
     if settings.indicators_auto_refresh:
         refresher = asyncio.create_task(
@@ -69,6 +72,11 @@ async def lifespan(app: FastAPI):
         refresher.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await refresher
+    usage_saver.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await usage_saver
+    await run_in_threadpool(meter.flush)
+    meter.detach()
     await run_in_threadpool(app.state.store.close)
 
 

@@ -3,6 +3,7 @@ import { apiFetch } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import PageHeader, { formatDate, timeAgo } from "../components/PageHeader.jsx";
 import Icon from "../components/Icon.jsx";
+import { UsagePanel } from "../components/ApiUsage.jsx";
 
 const AUTO_REFRESH_SECONDS = 60;
 const PROVIDER_NAMES = { mempool: "mempool.space", blockstream: "blockstream.info", etherscan: "etherscan.io", alchemy: "alchemy.com" };
@@ -19,12 +20,14 @@ export default function StatusPage() {
   const history = useApi("/api/status/provider-history?limit=48");
   const lists = useApi("/api/indicators/status");
   const bigquery = useApi("/api/bigquery/status");
+  const usage = useApi("/api/status/usage");
   const [auto, setAuto] = useState(false);
 
   async function checkAll() {
     // Saves one provider health check, which the history strip below shows.
     await apiFetch("/api/bitcoin/health").catch(() => null);
     await Promise.all([api.reload(), db.reload(), providers.reload(), ethProviders.reload(), baseProviders.reload(), solProviders.reload(), alerts.reload(), lists.reload(), bigquery.reload()]);
+    usage.reload(); // after the checks above, so their calls are counted
     history.reload();
   }
 
@@ -39,7 +42,7 @@ export default function StatusPage() {
 
   return (
     <>
-      <PageHeader icon="status" title="Status" subtitle="Live lookup services, the database and the sanction lists.">
+      <PageHeader icon="status" title="Status" subtitle="Live lookup services, API usage, the database and the sanction lists.">
         <label className="switch">
           <input type="checkbox" checked={auto} onChange={(event) => setAuto(event.target.checked)} />
           <span>Auto-check every {AUTO_REFRESH_SECONDS} s</span>
@@ -120,6 +123,10 @@ export default function StatusPage() {
               </p>
             </>
           )}
+        </StatusCard>
+
+        <StatusCard icon="status" title="API usage" wide state={usageState(usage)}>
+          <UsagePanel query={usage} />
         </StatusCard>
 
         <StatusCard icon="shield" title="Sanction and threat lists" wide
@@ -288,6 +295,14 @@ function TableCounts({ tables }) {
       ))}
     </div>
   );
+}
+
+// Warn from 70% of a free quota, red from 90%.
+function usageState(query) {
+  if (query.error) return "down";
+  if (!query.data) return "checking";
+  const top = Math.max(0, ...query.data.sources.map((s) => s.percent ?? 0));
+  return top >= 90 ? "down" : top >= 70 ? "warn" : "up";
 }
 
 function providerState(data) {
