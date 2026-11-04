@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
+from app.usage import meter
+
 log = logging.getLogger("app.alerts")
 
 MAX_FILTER_ENTRIES = 1000  # Alchemy's limit on addresses in one subscription
@@ -136,6 +138,7 @@ class AlertWatcher:
     def handle(self, raw: str | bytes) -> dict | None:
         """One message from Alchemy -> a new alert, or None (confirmation, duplicate, unwatched)."""
         self.status.bytes_received += len(raw)
+        meter.record("alchemy", "ethereum live alerts (WebSocket)", len(raw) * CU_PER_BYTE)
         try:
             message = json.loads(raw)
         except ValueError:

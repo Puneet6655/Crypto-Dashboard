@@ -528,3 +528,20 @@ button.link[data-case-type] { cursor: pointer; }
   .explorer-layout { grid-template-columns: 1fr; }
   .sigma-canvas { height: 480px; }
 }
+
+/* API usage (Status and Sources pages) */
+.usage-list { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+.usage-row { display: grid; gap: 8px; align-content: start; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.usage-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.usage-meter { display: grid; gap: 4px; }
+.usage-meter.compact { margin: 2px 0 4px; }
+.usage-bar { height: 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
+.usage-fill { display: block; height: 100%; border-radius: 999px; background: var(--ok); }
+.usage-fill.tone-warn { background: var(--warn); }
+.usage-fill.tone-down { background: var(--danger); }
+.usage-kv { font-size: 13px; }
+.usage-days { display: flex; gap: 3px; height: 34px; align-items: stretch; }
+.usage-day { flex: 1; max-width: 26px; display: flex; align-items: flex-end; background: var(--surface-2); border-radius: 3px; }
+.usage-day > span { display: block; width: 100%; background: var(--accent); border-radius: 3px; }
+.usage-row details table { margin-top: 6px; }
+.compact-table td, .compact-table th { padding: 4px 8px; }

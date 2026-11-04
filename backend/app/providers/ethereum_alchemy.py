@@ -39,6 +39,7 @@ from app.providers.evm_common import (
 )
 from app.providers.failover import _MISSING, TTLCache
 from app.schemas.bitcoin import ProviderHealth, Provenance
+from app.usage import meter
 from app.schemas.ethereum import (
     EthAddressSummary,
     EthHoldings,
@@ -145,10 +146,12 @@ class AlchemyProvider:
         try:
             result = await self._post(method, params)
         except ProviderError as exc:
+            meter.record("alchemy", f"{self.chain} {method}", CU_COST.get(method, DEFAULT_CU), ok=exc.status_code == 404)
             if exc.status_code != 404:
                 self.failures += 1
                 self.last_error = exc.message
             raise
+        meter.record("alchemy", f"{self.chain} {method}", CU_COST.get(method, DEFAULT_CU))
         self.answers += 1
         return result
 
@@ -174,9 +177,11 @@ class AlchemyProvider:
         try:
             body = await self._send(http_method, url, **kwargs)
         except ProviderError as exc:
+            meter.record("alchemy", f"{self.chain} {cost_name}", CU_COST.get(cost_name, DEFAULT_CU), ok=False)
             self.failures += 1
             self.last_error = exc.message
             raise
+        meter.record("alchemy", f"{self.chain} {cost_name}", CU_COST.get(cost_name, DEFAULT_CU))
         if not isinstance(body, dict):
             raise ProviderError("Alchemy returned an unexpected response", 502)
         self.answers += 1

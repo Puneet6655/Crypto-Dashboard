@@ -10,6 +10,7 @@ from psycopg.rows import dict_row
 from app.config import Settings, get_settings
 from app.db import NullStore
 from app.store import get_store
+from app.usage import meter
 
 router = APIRouter(prefix="/api/status", tags=["status"])
 
@@ -75,3 +76,10 @@ async def provider_history(limit: int = Query(48, ge=1, le=500), store: NullStor
         return await run_in_threadpool(read)
     except Exception:
         return []
+
+
+@router.get("/usage")
+def api_usage(days: int = Query(14, ge=1, le=60), settings: Settings = Depends(get_settings)) -> dict:
+    """How much of each outside source's free plan this API has used: today, this quota period,
+    each of the last `days` days, and the kinds of call that used the most. Counted by this API."""
+    return meter.summary(days=days, cycle_start_day=settings.alchemy_billing_day)
