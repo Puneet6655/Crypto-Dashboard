@@ -68,7 +68,7 @@ export const METHODS = [
   },
   {
     id: "random_forest",
-    label: "Random Forest (offline benchmark, dataset addresses only)",
+    label: "Random Forest (live score of any address, SHAP)",
     modes: ["crypto_investigation"],
     inputTypes: ["bitcoin_address"],
     status: "ready",
@@ -76,7 +76,7 @@ export const METHODS = [
   },
   {
     id: "xgboost",
-    label: "XGBoost (offline benchmark, dataset addresses only)",
+    label: "XGBoost (live score of any address, SHAP)",
     modes: ["crypto_investigation"],
     inputTypes: ["bitcoin_address"],
     status: "ready",

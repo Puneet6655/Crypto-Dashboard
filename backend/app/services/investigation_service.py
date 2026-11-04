@@ -142,6 +142,11 @@ COMMON_LIMITATIONS = [
     "An address missing from those lists is not proof that it is safe",
     "A link between addresses is not proof of shared ownership",
 ]
+# The Bitcoin address lookup adds a live model score when the model is loaded (see _model_score).
+MODEL_SCORED_LIMITATIONS = [
+    "Rule checks are exact matches against downloaded OFAC and Ransomwhere lists",
+    *COMMON_LIMITATIONS[1:],
+]
 
 
 def _data_sources(*provenances: Provenance) -> dict[str, datetime]:
@@ -269,6 +274,9 @@ async def _investigate_address(request: InvestigationRequest, provider: BitcoinP
                                first_finding=len(findings) + 1, first_evidence=len(evidence) + 1)
     builder.mark_listed(screening.flagged_nodes)
     sources = _data_sources(summary.provenance, page_provenance)
+    model_findings, model_evidence, model_notes, model_result = await _model_score(
+        provider, address, summary.entity_id, first_finding=len(findings) + len(screening.findings) + 1,
+        first_evidence=len(evidence) + len(screening.evidence) + 1)
     now = datetime.now(timezone.utc)
     return InvestigationResult(
         investigation_id=new_investigation_id(now),
@@ -277,12 +285,14 @@ async def _investigate_address(request: InvestigationRequest, provider: BitcoinP
         mode=request.mode,
         method=request.method,
         data_mode="live",
-        findings=findings + screening.findings,
+        findings=findings + screening.findings + model_findings,
         indicators=screening.indicators,
         graph=builder.graph(),
-        evidence=evidence + screening.evidence,
+        evidence=evidence + screening.evidence + model_evidence,
         source_timestamps={**sources, **screening.source_timestamps},
-        limitations=COMMON_LIMITATIONS + ["The graph shows only the first page of transactions; click the address for older pages"],
+        limitations=(COMMON_LIMITATIONS if model_result is None else MODEL_SCORED_LIMITATIONS)
+        + ["The graph shows only the first page of transactions; click the address for older pages"] + model_notes,
+        explanation=model_result,
         uncertainty={
             "unconfirmed_tx_count": summary.unconfirmed.tx_count,
             "transactions_shown": shown_tx,
@@ -292,6 +302,32 @@ async def _investigate_address(request: InvestigationRequest, provider: BitcoinP
         },
         scorecard=Scorecard(configured=False),
     )
+
+
+async def _model_score(provider, address: str, entity_id: str, first_finding: int, first_evidence: int):
+    """The live XGBoost score as one extra finding for the default address lookup (details in Why Flagged?)."""
+    from app.ml.live_scoring import LIVE_NOTE, lookup_score
+
+    result, skipped = await lookup_score(provider, address)
+    if result is None:
+        return [], [], [skipped], None
+    model = result["model"]
+    verdict = "at or above" if result["flagged"] else "below"
+    recent = result.get("recent_2026_threshold")
+    recent_text = (f"; {'at or above' if result['score'] >= recent else 'below'} the 2026 alert threshold {recent:.3f}"
+                   if recent else "")
+    created = datetime.fromisoformat(result["registry_generated_utc"])
+    finding = Finding(
+        id=f"f{first_finding}", kind="model_output", entity_ids=[entity_id], evidence_ids=[f"e{first_evidence}"],
+        title=(f"{model['name']}: live score {result['score']:.3f}, {verdict} its threshold {result['threshold']:.2f}"
+               f"{recent_text} (see Why Flagged?)"))
+    metrics = result.get("test_metrics") or {}
+    evidence = Evidence(
+        id=f"e{first_evidence}", source=f"Model registry: {model['id']} (live features, SHAP)",
+        source_url="backend/models/registry.json", retrieved_at=created, method_version=model["version"],
+        excerpt=(f"{result['live']['transactions_in_window']} transactions in the window ending at block "
+                 f"{result['live']['anchor_block']}; offline test PR-AUC {metrics.get('PR-AUC', 0):.3f}"))
+    return [finding], [evidence], [LIVE_NOTE], result
 
 
 async def _investigate_transaction(request: InvestigationRequest, provider: BitcoinProvider, max_nodes: int,

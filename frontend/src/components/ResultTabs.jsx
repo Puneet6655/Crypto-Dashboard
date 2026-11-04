@@ -83,7 +83,9 @@ export default function ResultTabs({ result, active, onTabChange: setActive, hig
             <p>
               <strong>{result.explanation.model.name}</strong>: score {result.explanation.score.toFixed(3)},{" "}
               {result.explanation.flagged ? "at or above" : "below"} its threshold {result.explanation.threshold.toFixed(2)}.{" "}
-              <span className="pill pill-dev">offline benchmark</span>
+              <span className="pill pill-dev">
+                {result.explanation.benchmark === "live" ? "live score, 2016-17 labels" : "offline benchmark"}
+              </span>
             </p>
             <p className="small muted">{result.explanation.note}</p>
             <ShapChart explanation={result.explanation.explanation} />
