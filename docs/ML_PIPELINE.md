@@ -2,8 +2,9 @@
 
 The models answer one narrow question: does a Bitcoin wallet's activity in a time window look like
 the wallets Elliptic++ labelled illicit in 2016-2017? Every score is an **offline benchmark**. The
-dashboard says so wherever a score appears, and scores work only for addresses in the benchmark
-dataset, because live lookups cannot build the hop features yet (see "Known gaps" below).
+dashboard says so wherever a score appears. The investigation methods score any address live with
+the v2+exp models (no hop features); the Models page scores benchmark rows. Recent 2026 data is
+batch-scored from BigQuery (section 8 and `reports/live_and_recent_scoring.md`).
 
 All commands run from `backend/` with the root virtual environment:
 `..\.venv\Scripts\python.exe -m training.<module>`. Install `requirements-ml.txt` first.
@@ -107,8 +108,10 @@ steps 1-49 threshold; pass the recent one before using its output for 2018-19.
   (log-odds); exact closed form for the linear baseline (log-odds). Base value + contributions equals
   the model output; `tests/test_models.py` checks this for all three model types.
 - API: `GET /api/models`, `GET /api/models/examples`, `POST /api/models/score`
-  `{address, model_id?, step?}`. Investigation methods `random_forest` and `xgboost` use the
-  v2+exp+hops model of that family and fill "Why Flagged?".
+  `{address, model_id?, step?}` (benchmark rows only).
+- `live_scoring.py`: investigation methods `random_forest` and `xgboost` score any mainnet address
+  live with the family's v2+exp model (features from the provider, exposure to
+  `models/known_labels.parquet`), with SHAP, and fill "Why Flagged?". A dataset row, if any, is shown too.
 
 ## 6. Retraining
 
@@ -146,9 +149,9 @@ Practical notes:
 
 ## 7. Known gaps
 
-- Live addresses cannot be scored: hop features need each counterparty's recent transactions, which
-  the live lookup does not fetch. Building them live (bounded 1-2 hop fetches through the failover
-  provider) is the next step if live scoring is wanted.
+- Live scoring uses the v2+exp models only: hop features need each counterparty's recent
+  transactions, which the live lookup does not fetch (bounded 1-2 hop fetches would be the next step).
+  In the 2026 batch the hop features are nearly empty anyway: almost no 2016-17 seed is still active.
 - Labels end in October 2017. Recent behaviour (Taproot, current exchanges and mixers) is not
   represented; steps 50-101 are unlabelled apart from Ransomwhere and OFAC.
 - Elliptic++ was sampled around labelled transactions; part of the gains may reflect how the sample
@@ -156,3 +159,16 @@ Practical notes:
 - Ransomware is poorly detected (see section 4). `models/xgboost_all_labels.joblib` (trained with
   Ransomwhere rows and random addresses) does better on ransomware but is not in the registry yet.
 - SMOTE was not run (see `MODEL_DOSSIERS.md`); class weights are used instead.
+
+## 8. Recent data (2026)
+
+```powershell
+..\.venv\Scripts\python.exe -m training.known_labels           # models/known_labels.parquet
+..\.venv\Scripts\python.exe -m training.recent_store pull       # only blocks not saved yet (~10 GB the first time)
+..\.venv\Scripts\python.exe -m training.score_recent            # 100k random recent addresses, ~5 min
+..\.venv\Scripts\python.exe -m training.check_recent_parity     # batch vs live features
+..\.venv\Scripts\python.exe -m training.anomaly_check recent
+```
+
+`score_recent` re-picks the 1%-of-random threshold and writes `recent_2026_threshold` into
+`registry.json` (alert model and v2+exp entries). Results and caveats: `reports/live_and_recent_scoring.md`.

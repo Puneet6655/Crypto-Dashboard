@@ -17,11 +17,11 @@ As of 2 November 2026 (end of Week 3 of 8 in the project plan). Branch `dashboar
 | M9 | Model dossiers | Done (2 Nov), plus the alert threshold re-picked on steps 50-101 | [MODEL_DOSSIERS.md](MODEL_DOSSIERS.md) |
 | M10 | Feature pipeline and Random Forest | Done | `training/`, [ML_PIPELINE.md](ML_PIPELINE.md) |
 | M11 | XGBoost and fair comparison | Done (2 Nov): logistic-regression baseline, one split, validation thresholds, confusion matrices, 3-seed rule | `training/model_registry.py`, `reports/model_registry.md` |
-| M12 | SHAP and comparison panel | Done (2 Nov): model registry, scoring endpoint, SHAP "Why flagged?", Models page | `app/ml/`, `frontend/src/pages/ModelsPage.jsx` |
+| M12 | SHAP and comparison panel | Done (2 Nov): model registry, scoring endpoint, SHAP "Why flagged?", Models page. 4 Nov: live scoring of any address, BigQuery 2026 batch scoring, 2026 alert threshold, anomaly check | `app/ml/`, `frontend/src/pages/ModelsPage.jsx`, `reports/live_and_recent_scoring.md` |
 | M13 | x402 demonstration mode | Not started. Only the synthetic demo case exists; the research team's x402 records have not arrived | `modes.js` (`x402_reconcile` is "planned") |
 | M14 | AI Analyst | Not started. The "Explanation" tab is a template summary built only from the findings | `components/ResultTabs.jsx` |
 | M15 | Evidence export, scorecard adapter | Partly: the scorecard shows an honest "not configured"; no JSON/Markdown export yet | `ResultTabs.jsx` |
-| M16 | Tests, deployment, README, demo | Partly: 116 offline backend tests, README and these docs; no deployment or demo video | `backend/tests/` |
+| M16 | Tests, deployment, README, demo | Partly: 134 offline backend tests, README and these docs; no deployment or demo video | `backend/tests/` |
 
 Built beyond the plan: sign-in with viewer/analyst/admin roles and an audit log; cases; Status and
 Sources pages; Bitcoin source failover; Ethereum (Etherscan, Alchemy), Base and Solana lookups;
@@ -39,9 +39,9 @@ benchmark (`reports/elliptic2_models.md`).
 ## Known gaps and caveats
 
 Models
-- Live addresses cannot be scored. Hop features need each counterparty's recent transactions,
-  which the live lookup does not fetch, so the model methods and the Models page only score dataset
-  addresses and say so.
+- Live addresses are scored with the v2+exp models only (no hop features: those need each
+  counterparty's recent transactions). The Models page still scores dataset rows only. There are no
+  2026 labels, so live and recent scores have no measured accuracy (reports/live_and_recent_scoring.md).
 - Labels stop in October 2017; scores drift lower on 2018-19 data. Ransomware is barely detected
   (3.2% of Ransomwhere rows after step 49 at the recent threshold). See [ML_PIPELINE.md](ML_PIPELINE.md).
 - SMOTE was not run (reasons in the dossiers). Elliptic2 models were benchmarked but not saved.

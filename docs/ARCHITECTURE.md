@@ -56,7 +56,7 @@ dataset) or `synthetic` (demo fixtures in `frontend/src/data/fixtures.js`).
 | `live_lookup` | Fetches the address or transaction, draws the graph, screens every address against the lists | Bitcoin, Ethereum, Base, Solana address or transaction |
 | `rules_v1` | List checks only, no transaction fetch | website or Bitcoin address |
 | `graph_measures` | `live_lookup`, then betweenness, PageRank and degree on the graph (NetworkX) | as `live_lookup` |
-| `random_forest`, `xgboost` | Scores a Bitcoin address from the benchmark dataset with SHAP | Bitcoin address in `models/scoring_rows.parquet` |
+| `random_forest`, `xgboost` | Scores a Bitcoin address live (v2+exp model, features from the provider) with SHAP | Any mainnet Bitcoin address with confirmed history |
 | `fixture_review` | Runs in the browser on synthetic demo cases | demo cases |
 
 The method list the screen offers is `frontend/src/config/modes.js`; "planned" methods show greyed
