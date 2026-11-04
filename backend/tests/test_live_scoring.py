@@ -50,6 +50,11 @@ HISTORY = [  # newest first, as mempool.space returns it
 
 def fake_mempool(request: httpx.Request, fail_blocks: bool = False) -> httpx.Response:
     path = request.url.path
+    if path == f"/api/address/{SUBJECT}":
+        return httpx.Response(200, json={"address": SUBJECT, "chain_stats": {
+            "funded_txo_count": 2, "funded_txo_sum": 129_000, "spent_txo_count": 1, "spent_txo_sum": 90_000,
+            "tx_count": 3}, "mempool_stats": {"funded_txo_count": 0, "funded_txo_sum": 0, "spent_txo_count": 0,
+                                              "spent_txo_sum": 0, "tx_count": 0}})
     if path == f"/api/address/{SUBJECT}/txs":
         return httpx.Response(200, json=HISTORY)
     if path.startswith(f"/api/address/{SUBJECT}/txs/chain/"):
@@ -180,3 +185,29 @@ def test_known_labels_fall_back_to_raw_files(tmp_path):
     labels = load(tmp_path / "models")
     assert labels.illicit == {BAD_PAYER, SUBJECT}  # on both lists: illicit wins
     assert labels.licit == {GOOD_PAYEE}
+
+
+def test_default_live_lookup_adds_the_live_xgboost_score(registry, monkeypatch):
+    import app.ml.registry as reg_module
+
+    monkeypatch.setattr(reg_module, "get_model_registry", lambda: registry)
+    use_provider()
+    use_fake_store()
+    monkeypatch.setattr(registry, "warm", False, raising=False)
+    cold = client.post("/api/investigations", json={
+        "mode": "crypto_investigation", "input_type": "bitcoin_address", "value": SUBJECT, "method": "live_lookup"}).json()
+    assert cold["explanation"] is None and any("still loading" in l for l in cold["limitations"])
+
+    from app.ml.live_scoring import warm_up
+
+    assert warm_up(registry) is True
+    body = client.post("/api/investigations", json={
+        "mode": "crypto_investigation", "input_type": "bitcoin_address", "value": SUBJECT, "method": "live_lookup"}).json()
+    model = [f for f in body["findings"] if f["kind"] == "model_output"]
+    assert len(model) == 1 and "live score" in model[0]["title"] and "Why Flagged?" in model[0]["title"]
+    assert body["explanation"]["benchmark"] == "live" and body["explanation"]["model"]["id"] == "xgboost__v2_exp"
+    assert not any("No model has scored" in l for l in body["limitations"])
+    ids = [e["id"] for e in body["evidence"]]
+    assert len(ids) == len(set(ids)) and model[0]["evidence_ids"][0] in ids
+    finding_ids = [f["id"] for f in body["findings"]]
+    assert len(finding_ids) == len(set(finding_ids))

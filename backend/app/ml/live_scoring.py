@@ -141,3 +141,59 @@ async def score_live(provider, address: str, family: str = "xgboost", registry: 
         "registry_generated_utc": registry.data["generated_utc"],
         "scored_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
+
+
+def warm_up(registry: ModelRegistry | None = None) -> bool:
+    """Load the live XGBoost model, the label lists and SHAP ahead of the first lookup (run in a thread).
+
+    Loading takes tens of seconds and is not async, so the default live lookup only adds a model
+    score once this has finished (see is_ready)."""
+    import logging
+
+    from app.ml.registry import get_model_registry
+
+    try:
+        registry = registry or get_model_registry()
+        if not registry.available:
+            return False
+        registry.known_labels
+        registry.model(registry.live_id("xgboost"))
+        import shap  # noqa: F401  (slow first import)
+
+        registry.warm = True
+        logging.getLogger(__name__).info("live XGBoost model loaded")
+        return True
+    except Exception as exc:  # noqa: BLE001 - no models on this server is a normal state
+        logging.getLogger(__name__).warning("live model warm-up skipped: %s", exc)
+        return False
+
+
+def is_ready(registry: ModelRegistry) -> bool:
+    return bool(getattr(registry, "warm", False))
+
+
+LOOKUP_BUDGET_SECONDS = 25.0
+
+
+async def lookup_score(provider, address: str, registry: ModelRegistry | None = None,
+                       budget: float = LOOKUP_BUDGET_SECONDS) -> tuple[dict | None, str | None]:
+    """Live XGBoost score for the default Bitcoin address lookup: (result, None) or (None, why it was skipped).
+
+    Never raises: the lookup must still work when models are missing, loading or slow."""
+    import asyncio
+
+    from app.ml.registry import get_model_registry
+
+    try:
+        registry = registry or get_model_registry()
+        if not registry.available:
+            return None, "No model score: no trained models on this server"
+        if not is_ready(registry):
+            return None, "No model score yet: the model is still loading after the server started; run the lookup again"
+        return await asyncio.wait_for(score_live(provider, address, "xgboost", registry), timeout=budget), None
+    except NoActivity:
+        return None, "No model score: the address has no confirmed transactions"
+    except TimeoutError:
+        return None, f"No model score: the provider took longer than {budget:.0f} s; pick the XGBoost method to retry"
+    except Exception as exc:  # noqa: BLE001
+        return None, f"No model score ({type(exc).__name__}): {str(exc)[:150]}"

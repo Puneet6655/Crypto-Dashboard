@@ -30,6 +30,13 @@ async def lifespan(app: FastAPI):
     app.state.store = await run_in_threadpool(open_store, settings.database_url)
     await run_in_threadpool(meter.attach, app.state.store)
     usage_saver = asyncio.create_task(keep_saving())
+    # Load the live XGBoost model in the background, so Bitcoin address lookups can add its score.
+    if settings.models_preload:
+        import threading
+
+        from app.ml.live_scoring import warm_up
+
+        threading.Thread(target=warm_up, name="model-warm-up", daemon=True).start()
     refresher = None
     if settings.indicators_auto_refresh:
         refresher = asyncio.create_task(

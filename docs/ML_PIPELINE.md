@@ -112,6 +112,9 @@ steps 1-49 threshold; pass the recent one before using its output for 2018-19.
 - `live_scoring.py`: investigation methods `random_forest` and `xgboost` score any mainnet address
   live with the family's v2+exp model (features from the provider, exposure to
   `models/known_labels.parquet`), with SHAP, and fill "Why Flagged?". A dataset row, if any, is shown too.
+- The default live lookup of a Bitcoin address also adds the live XGBoost score as a finding (and fills
+  "Why Flagged?"), once the model has loaded in the background at API startup (`MODELS_PRELOAD`, on by
+  default; about 20-40 s after start). It gives up after 25 s and says so in the limitations.
 
 ## 6. Retraining
 
