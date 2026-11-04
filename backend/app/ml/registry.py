@@ -73,6 +73,21 @@ class ModelRegistry:
                     "threshold": alert["recent_threshold"], "benchmark": "offline"}
         raise KeyError(model_id)
 
+    @cached_property
+    def known_labels(self):
+        """Known illicit/licit address sets for live exposure features (app/ml/known_labels.py)."""
+        _ml_packages()
+        from app.ml.known_labels import load
+
+        return load(self.folder)
+
+    def live_id(self, family: str) -> str:
+        """The live-compatible model of a family (feature set v2+exp: no hop features)."""
+        for e in self.entries():
+            if e["family"] == family and e.get("live_compatible") and e["feature_set"] == "v2+exp":
+                return e["id"]
+        raise KeyError(f"no live-compatible {family} model")
+
     def default_id(self, family: str, feature_set: str = "v2+exp+hops") -> str:
         for e in self.entries():
             if e["family"] == family and e["feature_set"] == feature_set:

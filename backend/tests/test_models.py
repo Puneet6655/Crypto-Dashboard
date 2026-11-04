@@ -153,22 +153,17 @@ def test_registry_reports_missing_models(tmp_path):
         app.dependency_overrides.pop(get_model_registry, None)
 
 
-def test_model_investigation_method_returns_score_and_shap(registry, monkeypatch):
+def test_model_investigation_needs_a_live_compatible_model(registry, monkeypatch):
+    """This registry has hop models only, so the live method refuses (tests/test_live_scoring.py covers scoring)."""
     import app.ml.scoring as scoring
 
     monkeypatch.setattr(scoring, "get_model_registry", lambda: registry)
+    use_fake_provider()
     use_fake_store()
-    body = client.post("/api/investigations", json={
+    response = client.post("/api/investigations", json={
         "mode": "crypto_investigation", "input_type": "bitcoin_address", "value": LICIT, "method": "random_forest",
-    }).json()
-    assert body["data_mode"] == "recorded" and body["method"] == "random_forest"
-    assert body["findings"][0]["kind"] == "model_output" and "offline benchmark" in body["findings"][0]["title"]
-    assert body["explanation"]["model"]["family"] == "random_forest"
-    assert any("live lookups cannot build the hop features" in l for l in body["limitations"])
-    missing = client.post("/api/investigations", json={
-        "mode": "crypto_investigation", "input_type": "bitcoin_address", "value": SYNTHETIC_ADDRESS, "method": "xgboost",
     })
-    assert missing.status_code == 422 and "not in the offline benchmark dataset" in missing.json()["detail"]
+    assert response.status_code == 422 and "No live-compatible model" in response.json()["detail"]
 
 
 def test_graph_measures_add_networkx_values_to_every_node():
