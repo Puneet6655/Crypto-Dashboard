@@ -148,6 +148,7 @@ def recent(top_n: int = 200) -> dict:
     scores = pd.read_parquet(RECENT / "scores.parquet")
     summary = json.loads((RECENT / "summary.json").read_text())
     threshold = summary["thresholds"]["xgboost__alert_hops"]["new"]
+    scores = scores.drop(columns=[c for c in saved["features"] if c in scores.columns])
     df = scores.merge(features[["address"] + saved["features"]], on="address", validate="one_to_one")
     df["anomaly"] = anomaly(saved["model"], df[saved["features"]])
     q99 = float(np.quantile(df.loc[df.in_random, "anomaly"], 0.99))
