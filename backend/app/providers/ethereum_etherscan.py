@@ -32,6 +32,7 @@ from app.providers.evm_common import (
 )
 from app.providers.failover import TTLCache, _MISSING
 from app.schemas.bitcoin import ProviderHealth, Provenance
+from app.usage import meter
 from app.schemas.ethereum import (
     EthAddressSummary,
     EthInternalTransfer,
@@ -95,14 +96,17 @@ class EtherscanProvider:
         for attempt in range(2):
             await self._wait_turn()
             self.requests += 1
+            kind = f"{params.get('module')}.{params.get('action')}"
             try:
                 result = await self._get(params)
             except ProviderError as exc:
+                meter.record("etherscan", kind, ok=exc.status_code == 404)
                 if exc.status_code == 429 and exc.retry_after is None and attempt == 0:
                     await asyncio.sleep(1.1)  # per-second limit: one more try after a pause
                     continue
                 self._failed(exc)
                 raise
+            meter.record("etherscan", kind)
             if result is None and not allow_empty:
                 raise ProviderError("Etherscan has no record of that", 404)
             self.answers += 1

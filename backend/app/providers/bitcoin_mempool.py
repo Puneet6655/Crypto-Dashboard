@@ -5,6 +5,7 @@ import httpx
 
 from app.features.wallet_window import BlockStat
 from app.providers.base import BitcoinProvider, ProviderError
+from app.usage import meter, path_kind
 from app.schemas.bitcoin import (
     ActivityTotals,
     AddressSummary,
@@ -48,9 +49,12 @@ class MempoolSpaceProvider(BitcoinProvider):
             async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self._transport) as client:
                 response = await client.get(url, headers={"Accept": "application/json"})
         except httpx.TimeoutException:
+            meter.record(self.name, path_kind(path), ok=False)
             raise ProviderError(f"{self.name} did not answer within {self.timeout_seconds} seconds", 504)
         except httpx.HTTPError as exc:
+            meter.record(self.name, path_kind(path), ok=False)
             raise ProviderError(f"Could not reach {self.name}: {exc.__class__.__name__}", 502)
+        meter.record(self.name, path_kind(path), ok=response.status_code < 400 or response.status_code in (400, 404))
 
         if response.status_code == 400 or response.status_code == 404:
             raise ProviderError(f"{self.name} rejected the request: {response.text[:200]}", 404)
