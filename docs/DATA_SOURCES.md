@@ -20,6 +20,13 @@ Failover (`app/providers/failover.py`): a rate limit cools the source down for 3
 confirmed transactions a day). `python -m scripts.check_provider_parity` (from `backend/`) checks
 that mempool.space and blockstream.info give identical features (8/8 on 30 Oct 2026).
 
+API usage (`app/usage.py`, `GET /api/status/usage`): every HTTP call to these four sources, and
+every Alchemy WebSocket message, is counted per day and kind of call (Alchemy in estimated CU from
+the cost table, the others in calls). Counts are saved to the `api_usage` table every minute, so they
+survive restarts. The Status page shows each source against its free quota (Etherscan per UTC day,
+Alchemy per billing month from `ALCHEMY_BILLING_DAY`), the last 14 days and the busiest calls; each
+Sources card shows a one-line summary. Calls made with the same key outside this API are not counted.
+
 ### Alchemy
 
 Costs per call (compute units, CU): asset transfers 120, so a full Ethereum address lookup is about

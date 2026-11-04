@@ -164,3 +164,15 @@ CREATE TABLE IF NOT EXISTS audit_log (
     detail      JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 CREATE INDEX IF NOT EXISTS audit_log_at_idx ON audit_log (at DESC);
+
+-- Calls this API made to each outside data source, per day (see app/usage.py).
+-- units: compute units for Alchemy, calls for the others.
+CREATE TABLE IF NOT EXISTS api_usage (
+    day     DATE NOT NULL,
+    source  TEXT NOT NULL,
+    kind    TEXT NOT NULL,
+    calls   BIGINT NOT NULL DEFAULT 0,
+    units   DOUBLE PRECISION NOT NULL DEFAULT 0,
+    errors  BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, source, kind)
+);
