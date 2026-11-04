@@ -178,7 +178,8 @@ async def run_investigation(request: InvestigationRequest, provider: BitcoinProv
     if request.method in ("random_forest", "xgboost"):
         from app.ml.scoring import investigate_with_model
 
-        return investigate_with_model(request, indicators if indicators is not None else get_indicator_index())
+        return await investigate_with_model(request, provider,
+                                            indicators if indicators is not None else get_indicator_index())
     if request.method != "live_lookup":
         raise UnsupportedInvestigation(f"Method '{request.method}' cannot run on the server yet.")
     if request.mode != "crypto_investigation":

@@ -35,5 +35,9 @@ class RecordingProvider(BitcoinProvider):
         self.transactions.extend(txs)
         return txs
 
+    async def get_block_stats(self, height: int):
+        """Block summaries for the network-context features (not saved)."""
+        return await self.inner.get_block_stats(height)
+
     async def health(self) -> ProviderHealth:
         return await self.inner.health()
