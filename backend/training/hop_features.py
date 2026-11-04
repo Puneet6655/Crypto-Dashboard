@@ -78,8 +78,9 @@ def gather(indptr: np.ndarray, nodes: np.ndarray) -> tuple[np.ndarray, np.ndarra
 class StepGraph:
     """Address graph of one step, built from that step's saved transactions."""
 
-    def __init__(self, step: int):
-        table = pq.read_table(STORE / f"step={step:03d}" / "part-0.parquet",
+    def __init__(self, step: int | None = None, path=None):
+        """Graph of a training step's saved transactions, or of any file with the same columns (path)."""
+        table = pq.read_table(path or STORE / f"step={step:03d}" / "part-0.parquet",
                               columns=["tx_hash", "inputs", "outputs", "row_addresses"])
         self.tx_hash = table.column("tx_hash").to_numpy(zero_copy_only=False)
         n_tx = len(self.tx_hash)
