@@ -41,6 +41,11 @@ async def lifespan(app: FastAPI):
     if settings.indicators_auto_refresh:
         refresher = asyncio.create_task(
             keep_indicators_fresh(settings.indicators_dir, settings.indicators_max_age_hours))
+    labels_task = None
+    if settings.dune_api_key:
+        from app.intelligence.cex_labels import keep_labels_fresh
+
+        labels_task = asyncio.create_task(keep_labels_fresh(settings.dune_api_key))
     watcher_task = None
     if settings.alchemy_enabled and settings.alchemy_api_key and settings.live_alerts_enabled:
         watcher = AlertWatcher(f"wss://eth-mainnet.g.alchemy.com/v2/{settings.alchemy_api_key}",
@@ -75,6 +80,10 @@ async def lifespan(app: FastAPI):
         with contextlib.suppress(asyncio.CancelledError):
             await watcher_task
         set_watcher(None)
+    if labels_task is not None:
+        labels_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await labels_task
     if refresher is not None:
         refresher.cancel()
         with contextlib.suppress(asyncio.CancelledError):

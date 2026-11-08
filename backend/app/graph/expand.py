@@ -10,6 +10,8 @@ How one request works (POST /api/graph/expand):
    with totals per counterparty.
 3. Counterparties are grouped so the graph stays readable at thousands of nodes:
    - dust: tiny or zero-value transfers (address poisoning, spam airdrops) become one summary node;
+   - known exchange addresses (Dune's community cex.addresses labels, app/intelligence/cex_labels.py)
+     are named and drawn as "exchange" nodes, always on their own;
    - busy addresses (many counterparties, or a full page of history inside one day: exchanges,
      payment processors, mixers, popular contracts) are marked "hub" and are not expanded further
      automatically, and only their top counterparties are shown;
@@ -419,20 +421,39 @@ def _edges_for(chain: str, center: str, target: str, cp_like: dict) -> list[dict
     return edges
 
 
-def build_batch(n: Neighbors, per_node_limit: int, index: IndicatorIndex | None) -> tuple[dict, list[dict], list[dict], list[str]]:
-    """(the expanded node, counterparty and summary nodes, edges, addresses worth expanding next)."""
+def _exchange(labels, chain: str, address: str) -> dict | None:
+    label = labels.lookup(chain, address) if labels is not None else None
+    return label.as_dict() if label else None
+
+
+def _name(address: str, exchange: dict | None) -> str:
+    return (exchange.get("name") or exchange["exchange"]) if exchange else short(address)
+
+
+def build_batch(n: Neighbors, per_node_limit: int, index: IndicatorIndex | None,
+                labels=None) -> tuple[dict, list[dict], list[dict], list[str]]:
+    """(the expanded node, counterparty and summary nodes, edges, addresses worth expanding next).
+
+    `labels` (CexLabels) names known exchange addresses: they are drawn as "exchange" nodes, never hidden
+    in a group, and like hubs they are not walked through (their counterparties are their customers)."""
     chain = n.chain
     center = node_id(chain, n.address)
     hub = n.hub_reason()
-    center_node = {"id": center, "kind": "hub" if hub else "address", "chain": chain, "address": n.address,
-                   "label": short(n.address), "expanded": True, "tx_seen": n.tx_seen, "counterparties": len(n.counterparties),
-                   "source": n.source, "note": n.note, "hub_reason": hub, "listed": _listed(index, chain, n.address)}
+    exchange = _exchange(labels, chain, n.address)
+    center_node = {"id": center, "kind": "exchange" if exchange else "hub" if hub else "address", "chain": chain,
+                   "address": n.address, "label": _name(n.address, exchange), "expanded": True, "tx_seen": n.tx_seen,
+                   "counterparties": len(n.counterparties), "source": n.source, "note": n.note, "hub_reason": hub,
+                   "exchange": exchange, "listed": _listed(index, chain, n.address)}
+    hub = hub or exchange
 
-    listed, dust, normal = [], [], []
+    listed, exchanges, dust, normal = [], [], [], []
     for cp in n.counterparties.values():
         flags = _listed(index, chain, cp.address)
+        cp_exchange = _exchange(labels, chain, cp.address)
         if flags:
             listed.append((cp, flags))
+        elif cp_exchange:
+            exchanges.append((cp, cp_exchange))
         elif cp.total < DUST[chain] and not cp.tokens:
             dust.append(cp)
         else:
@@ -443,10 +464,12 @@ def build_batch(n: Neighbors, per_node_limit: int, index: IndicatorIndex | None)
     shown, rest = normal[:limit], normal[limit:]
 
     nodes, edges = [], []
-    for cp, flags in [*listed, *((cp, []) for cp in shown)]:
+    drawn = [*((cp, flags, _exchange(labels, chain, cp.address)) for cp, flags in listed),
+             *((cp, [], ex) for cp, ex in exchanges), *((cp, [], None) for cp in shown)]
+    for cp, flags, ex in drawn:
         cid = node_id(chain, cp.address)
-        nodes.append({"id": cid, "kind": "address", "chain": chain, "address": cp.address, "label": short(cp.address),
-                      "expanded": False, "listed": flags})
+        nodes.append({"id": cid, "kind": "exchange" if ex else "address", "chain": chain, "address": cp.address,
+                      "label": _name(cp.address, ex), "expanded": False, "listed": flags, "exchange": ex})
         edges += _edges_for(chain, center, cid, {"sent": _fmt(cp.sent), "received": _fmt(cp.received),
                                                  "sent_txs": cp.sent_txs, "received_txs": cp.received_txs,
                                                  "tokens": dict(cp.tokens.most_common(3))})
@@ -471,7 +494,8 @@ def build_batch(n: Neighbors, per_node_limit: int, index: IndicatorIndex | None)
 
 async def expand_stream(expander: GraphExpander, provider, chain: str, addresses: list[str], hops: int,
                         max_new_nodes: int, per_node_limit: int, index: IndicatorIndex | None,
-                        is_disconnected: Callable[[], "asyncio.Future[bool]"] | None = None) -> AsyncIterator[dict]:
+                        is_disconnected: Callable[[], "asyncio.Future[bool]"] | None = None,
+                        labels=None) -> AsyncIterator[dict]:
     """Yield events: start, batch (one per fetched address), warning, error, done."""
     seeds = list(dict.fromkeys(addresses))
     fetch_cap = FETCH_CAP[chain]
@@ -519,7 +543,7 @@ async def expand_stream(expander: GraphExpander, provider, chain: str, addresses
                 fetches += not from_cache
                 cu += 0 if from_cache else neighbors.cu_spent
 
-                center, nodes, edges, next_up = build_batch(neighbors, per_node_limit, index)
+                center, nodes, edges, next_up = build_batch(neighbors, per_node_limit, index, labels)
                 if center["id"] not in sent_ids:  # a seed; counterparties were counted when they arrived
                     sent_ids.add(center["id"])
                     new_nodes += 1
@@ -538,7 +562,7 @@ async def expand_stream(expander: GraphExpander, provider, chain: str, addresses
                 yield {"event": "batch", "hop": hop, "expanded": center, "nodes": kept, "edges": edges,
                        "from_cache": from_cache, "progress": {"done": done_count, "total": len(todo)}}
                 # Walk on from ordinary addresses only: a hub's counterparties are mostly its customers.
-                if center["kind"] != "hub":
+                if center["kind"] not in ("hub", "exchange"):
                     next_frontier += [a for a in next_up if node_id(chain, a) in sent_ids]
                 if stopped == "node_limit":
                     break

@@ -50,6 +50,8 @@ class Settings:
     live_alerts_watch_ofac: bool = True
     # Advanced graph mode: its own daily share of the Alchemy free plan (30M CU a month), and the
     # largest node cap the browser may ask for.
+    # Dune API (exchange labels from cex.addresses, refreshed weekly). Empty = no exchange labels.
+    dune_api_key: str | None = field(default=None, repr=False)
     graph_alchemy_daily_cu: int = 300_000
     graph_max_nodes: int = 20_000
 
@@ -96,6 +98,7 @@ def get_settings() -> Settings:
         alchemy_billing_day=int(os.getenv("ALCHEMY_BILLING_DAY", "1") or 1),
         live_alerts_enabled=os.getenv("LIVE_ALERTS_ENABLED", "true").strip().lower() not in ("0", "false", "no"),
         live_alerts_watch_ofac=os.getenv("LIVE_ALERTS_WATCH_OFAC", "true").strip().lower() not in ("0", "false", "no"),
+        dune_api_key=(os.getenv("DUNE_API_KEY") or os.getenv("DUNE_API_Key") or "").strip() or None,
         graph_alchemy_daily_cu=int(os.getenv("GRAPH_ALCHEMY_DAILY_CU", "300000")),
         graph_max_nodes=int(os.getenv("GRAPH_MAX_NODES", "20000")),
     )

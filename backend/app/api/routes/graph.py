@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.config import Settings, get_settings
 from app.graph.expand import FETCH_CAP, expand_stream, get_expander, normalize
+from app.intelligence.cex_labels import get_cex_labels
 from app.intelligence.index import IndicatorIndex, get_indicator_index
 from app.providers.registry import get_base_provider, get_bitcoin_provider, get_ethereum_provider, get_solana_provider
 
@@ -45,7 +46,7 @@ def _provider(chain: str, settings: Settings):
 def status(settings: Settings = Depends(get_settings)) -> dict:
     """Graph mode's Alchemy allowance, cache size, and per-chain limits."""
     return {**get_expander(settings.graph_alchemy_daily_cu).status(), "fetch_cap": FETCH_CAP,
-            "max_nodes": settings.graph_max_nodes,
+            "max_nodes": settings.graph_max_nodes, "exchange_labels": get_cex_labels().status(),
             "chains": {chain: _provider(chain, settings) is not None for chain in FETCH_CAP}}
 
 
@@ -66,7 +67,8 @@ async def expand(body: ExpandRequest, request: Request, settings: Settings = Dep
 
     async def lines():
         async for event in expand_stream(expander, provider, body.chain, addresses, body.hops, max_new,
-                                         body.per_node_limit, index, request.is_disconnected):
+                                         body.per_node_limit, index, request.is_disconnected,
+                                         labels=get_cex_labels()):
             yield json.dumps(event, default=str, separators=(",", ":")) + "\n"
 
     # X-Accel-Buffering stops proxies from holding the stream back until it ends.
