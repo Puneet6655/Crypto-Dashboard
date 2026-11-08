@@ -29,6 +29,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+import re
+
 import httpx
 
 from app.config import BACKEND_DIR, get_settings
@@ -52,6 +54,55 @@ SELECT blockchain,
 FROM cex.addresses
 WHERE blockchain IN ('bitcoin', 'ethereum', 'base', 'solana')
 """
+
+
+# Fallback when the Dune API cannot answer (no key, plan limits): the same seed lists, read straight
+# from Spellbook on GitHub. No credits; the EVM list is shared by Ethereum and Base (Dune keeps, per
+# chain, only the addresses that have been used there, which makes no difference for lookups).
+GITHUB = ("https://raw.githubusercontent.com/duneanalytics/spellbook/main/dbt_subprojects/hourly_spellbook/"
+          "models/_sector/cex/addresses/chains/")
+GITHUB_FILES = {"bitcoin": "bitcoin/cex_bitcoin_addresses.sql", "solana": "solana/cex_solana_addresses.sql",
+                "evm": "cex_evms_addresses.sql"}
+_TEXT = r"'((?:[^']|'')*)'"
+_ROW_TEXT = re.compile(rf"\(\s*'(\w+)'\s*,\s*{_TEXT}\s*,\s*{_TEXT}\s*,\s*{_TEXT}\s*,\s*{_TEXT}\s*,\s*date\s*'([\d-]+)'\s*\)")
+_ROW_EVM = re.compile(rf"\(\s*(0x[0-9a-fA-F]{{40}})\s*,\s*{_TEXT}\s*,\s*{_TEXT}\s*,\s*{_TEXT}\s*,\s*date\s*'([\d-]+)'\s*\)")
+
+
+def parse_seed(kind: str, sql: str) -> list[dict]:
+    """Rows of one Spellbook seed file ("bitcoin", "solana" or "evm")."""
+    un = lambda text: text.replace("''", "'")  # noqa: E731
+    rows = []
+    if kind == "evm":
+        for address, cex, name, by, date in _ROW_EVM.findall(sql):
+            for chain in ("ethereum", "base"):
+                rows.append({"blockchain": chain, "address": address.lower(), "cex_name": un(cex),
+                             "distinct_name": un(name), "added_by": un(by), "added_date": date})
+    else:
+        for chain, address, cex, name, by, date in _ROW_TEXT.findall(sql):
+            if chain == kind:
+                rows.append({"blockchain": chain, "address": un(address), "cex_name": un(cex),
+                             "distinct_name": un(name), "added_by": un(by), "added_date": date})
+    return rows
+
+
+def download_from_github(client: httpx.Client | None = None) -> list[dict]:
+    own = client is None
+    client = client or httpx.Client(timeout=30, follow_redirects=True)
+    try:
+        rows = []
+        for kind, path in GITHUB_FILES.items():
+            response = client.get(GITHUB + path)
+            response.raise_for_status()
+            found = parse_seed(kind, response.text)
+            if not found:
+                raise RuntimeError(f"No rows found in Spellbook's {path}; its format may have changed.")
+            rows += found
+        return rows
+    except httpx.HTTPError as exc:
+        raise RuntimeError(f"Could not read Spellbook on GitHub: {exc.__class__.__name__}") from None
+    finally:
+        if own:
+            client.close()
 
 
 @dataclass(frozen=True)
@@ -78,8 +129,11 @@ def _key(chain: str, address: str) -> tuple[str, str]:
 
 
 class CexLabels:
-    def __init__(self, rows: list[dict], retrieved_at: str | None = None):
+    def __init__(self, rows: list[dict], retrieved_at: str | None = None, via: str | None = None,
+                 api_problem: str | None = None):
         self.retrieved_at = retrieved_at
+        self.via = via
+        self.api_problem = api_problem
         self.labels: dict[tuple[str, str], CexLabel] = {}
         for r in rows:
             chain = r.get("blockchain")
@@ -97,7 +151,7 @@ class CexLabels:
         for chain, _ in self.labels:
             counts[chain] = counts.get(chain, 0) + 1
         return {"source": SOURCE_TITLE, "retrieved_at": self.retrieved_at, "addresses": len(self.labels),
-                "per_chain": counts}
+                "per_chain": counts, "via": self.via, "api_problem": self.api_problem}
 
 
 # ---- download -------------------------------------------------------------------------------------
@@ -109,12 +163,16 @@ def download(api_key: str, client: httpx.Client | None = None, poll_seconds: flo
     client = client or httpx.Client(timeout=30)
     headers = {"X-Dune-Api-Key": api_key}
     try:
-        started = client.post(f"{API}/sql/execute", headers=headers, json={"sql": SQL, "performance": "medium"})
+        # No "performance" field: the free plan rejects the tiers ("Invalid performance tier").
+        started = client.post(f"{API}/sql/execute", headers=headers, json={"sql": SQL})
         if started.status_code in (401, 403):
             raise RuntimeError("Dune refused the API key (check DUNE_API_KEY in backend/.env).")
-        if started.status_code == 402:
-            raise RuntimeError("Dune says the account is out of credits.")
-        started.raise_for_status()
+        if started.status_code >= 400:
+            try:
+                detail = started.json().get("error") or started.text[:200]
+            except ValueError:
+                detail = started.text[:200]
+            raise RuntimeError(f"Dune answered HTTP {started.status_code}: {detail}")
         execution = started.json()["execution_id"]
         deadline = time.monotonic() + timeout_seconds
         while True:
@@ -142,18 +200,28 @@ def download(api_key: str, client: httpx.Client | None = None, poll_seconds: flo
             client.close()
 
 
-def refresh(folder: Path = DEFAULT_DIR, api_key: str | None = None, client: httpx.Client | None = None) -> CexLabels:
-    """Download and save a new snapshot, then make it the one in use."""
+def refresh(folder: Path = DEFAULT_DIR, api_key: str | None = None, client: httpx.Client | None = None,
+            github_client: httpx.Client | None = None) -> CexLabels:
+    """Download and save a new snapshot, then make it the one in use.
+
+    Tries the Dune API first (when a key is set), then the same seed lists on GitHub."""
     api_key = api_key or get_settings().dune_api_key
-    if not api_key:
-        raise RuntimeError("DUNE_API_KEY is not set in backend/.env.")
-    rows = download(api_key, client)
+    via, problem = "dune_api", None
+    try:
+        if not api_key:
+            raise RuntimeError("DUNE_API_KEY is not set in backend/.env.")
+        rows = download(api_key, client)
+    except RuntimeError as exc:
+        problem = str(exc)
+        log.warning("Dune API labels unavailable (%s); reading Spellbook's seed lists on GitHub instead", problem)
+        rows, via = download_from_github(github_client), "github_spellbook"
     folder.mkdir(parents=True, exist_ok=True)
     retrieved_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     tmp = folder / (FILE + ".tmp")
-    tmp.write_text(json.dumps({"retrieved_at": retrieved_at, "source": SOURCE_URL, "rows": rows}), encoding="utf-8")
+    tmp.write_text(json.dumps({"retrieved_at": retrieved_at, "source": SOURCE_URL, "via": via,
+                               "api_problem": problem, "rows": rows}), encoding="utf-8")
     tmp.replace(folder / FILE)
-    labels = CexLabels(rows, retrieved_at)
+    labels = CexLabels(rows, retrieved_at, via, problem)
     _set(labels, folder)
     log.info("Dune exchange labels: %s", labels.status())
     return labels
@@ -165,7 +233,7 @@ def load(folder: Path = DEFAULT_DIR) -> CexLabels:
         return CexLabels([])
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return CexLabels(data.get("rows") or [], data.get("retrieved_at"))
+        return CexLabels(data.get("rows") or [], data.get("retrieved_at"), data.get("via"), data.get("api_problem"))
     except (OSError, ValueError) as exc:
         log.warning("Ignoring the saved Dune label snapshot: %s", exc)
         return CexLabels([])
@@ -197,7 +265,7 @@ def get_cex_labels(folder: Path = DEFAULT_DIR) -> CexLabels:
         return _current[1]
 
 
-async def keep_labels_fresh(api_key: str, folder: Path = DEFAULT_DIR, max_age_days: float = MAX_AGE_DAYS,
+async def keep_labels_fresh(api_key: str | None, folder: Path = DEFAULT_DIR, max_age_days: float = MAX_AGE_DAYS,
                             check_every_seconds: float = 6 * 3600) -> None:
     """Runs until cancelled: refreshes the snapshot when it is missing or older than max_age_days."""
     import asyncio
