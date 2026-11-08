@@ -224,4 +224,30 @@ def test_dune_bad_key_is_a_readable_error(tmp_path):
 
     client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(401, json={"error": "invalid"})))
     with pytest.raises(RuntimeError, match="refused the API key"):
-        cex_labels.refresh(tmp_path, api_key="bad", client=client)
+        cex_labels.download("bad", client)
+
+
+def test_spellbook_seed_parsing_and_github_fallback(tmp_path):
+    import httpx
+    from app.intelligence import cex_labels
+
+    btc = """FROM (VALUES
+    ('bitcoin', '1Cb1G5qFK91fShyaPPZWVFwYFBtqRG7h8D', 'Coinbase', 'Coinbase 1', 'hildobby', date '2023-04-06')
+    , ('bitcoin', 'bc1qXYZ', 'O''Brien Exchange', 'OB 1', 'someone', date '2024-01-02')"""
+    sol = "(VALUES ('solana', '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9', 'Binance', 'Binance 1', 'hildobby', date '2024-04-19')"
+    evm = "(VALUES\n -- Binance\n (0x28C6c06298d514Db089934071355E5743bf21d60, 'Binance', 'Binance 14', 'hildobby', date '2022-08-28')"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        text = btc if "bitcoin" in path else sol if "solana" in path else evm
+        return httpx.Response(200, text=text)
+
+    dune_402 = httpx.Client(transport=httpx.MockTransport(
+        lambda r: httpx.Response(402, json={"error": "would exceed your configured datapoint limit"})))
+    labels = cex_labels.refresh(tmp_path, api_key="k" * 20, client=dune_402,
+                                github_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert labels.via == "github_spellbook" and "datapoint limit" in labels.api_problem
+    assert labels.lookup("bitcoin", "bc1qxyz").exchange == "O'Brien Exchange"
+    assert labels.lookup("ethereum", "0x28c6c06298d514db089934071355e5743bf21d60").name == "Binance 14"
+    assert labels.lookup("base", "0x28c6c06298d514db089934071355e5743bf21d60") is not None
+    assert labels.status()["per_chain"] == {"bitcoin": 2, "solana": 1, "ethereum": 1, "base": 1}
