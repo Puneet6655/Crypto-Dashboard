@@ -210,7 +210,9 @@ def test_dune_download_follows_the_execution(tmp_path):
              "distinct_name": "Binance 1"}]}, "next_uri": "https://api.dune.com/api/v1/execution/E1/results?page2=1"})
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    labels = cex_labels.refresh(tmp_path, api_key="k" * 20, client=client)
+    github_down = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(503)))
+    labels = cex_labels.refresh(tmp_path, api_key="k" * 20, client=client, github_client=github_down)
+    assert labels.via == "dune_api"
     assert labels.lookup("ethereum", "0xabcdef0000000000000000000000000000000001").name == "Binance 1"
     assert labels.lookup("solana", "So1").exchange == "OKX"
     assert cex_labels.load(tmp_path).status()["addresses"] == 2
@@ -242,11 +244,12 @@ def test_spellbook_seed_parsing_and_github_fallback(tmp_path):
         text = btc if "bitcoin" in path else sol if "solana" in path else evm
         return httpx.Response(200, text=text)
 
-    dune_402 = httpx.Client(transport=httpx.MockTransport(
-        lambda r: httpx.Response(402, json={"error": "would exceed your configured datapoint limit"})))
-    labels = cex_labels.refresh(tmp_path, api_key="k" * 20, client=dune_402,
+    def dune_unused(request):
+        raise AssertionError("GitHub answered, so the Dune API must not be called")
+
+    labels = cex_labels.refresh(tmp_path, api_key="k" * 20, client=httpx.Client(transport=httpx.MockTransport(dune_unused)),
                                 github_client=httpx.Client(transport=httpx.MockTransport(handler)))
-    assert labels.via == "github_spellbook" and "datapoint limit" in labels.api_problem
+    assert labels.via == "github_spellbook"
     assert labels.lookup("bitcoin", "bc1qxyz").exchange == "O'Brien Exchange"
     assert labels.lookup("ethereum", "0x28c6c06298d514db089934071355e5743bf21d60").name == "Binance 14"
     assert labels.lookup("base", "0x28c6c06298d514db089934071355e5743bf21d60") is not None
