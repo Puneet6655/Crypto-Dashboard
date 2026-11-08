@@ -153,6 +153,16 @@ DEFAULT_SOURCES: list[dict] = [
                     "Manipulation. NDSS 2019.",
     },
     {
+        "name": "Dune cex.addresses",
+        "category": "Sanctions and threat intelligence",
+        "url": "https://docs.dune.com/data-catalog/curated/cex-flows/addresses",
+        "used_for": "Names known exchange addresses in the Graph explorer (community-curated Spellbook seed lists, "
+                    "downloaded weekly through the Dune API).",
+        "licence": "Business Source License 1.1 until 3 March 2027 (then GPL-3.0): no use in a data or analytics "
+                   "platform offered to third parties. Own analysis only; snapshot not committed.",
+        "citation": "Dune Analytics (2026). Spellbook: cex.addresses. https://github.com/duneanalytics/spellbook",
+    },
+    {
         "name": "Cytoscape.js",
         "category": "Open-source software",
         "url": "https://js.cytoscape.org/",
@@ -198,7 +208,7 @@ def ensure_seeded(pool: ConnectionPool) -> None:
 # deletes it afterwards it stays deleted.
 ADDED_LATER = ("Etherscan API V2", "CryptoScamDB", "MetaMask eth-phishing-detect", "ScamSniffer scam database",
                "Polkadot{.js} phishing list", "Phishing.Database", "Tranco top sites list",
-               "Alchemy API", "Elliptic2 dataset")
+               "Alchemy API", "Elliptic2 dataset", "Dune cex.addresses")
 
 
 def _add_later_defaults(conn) -> None:

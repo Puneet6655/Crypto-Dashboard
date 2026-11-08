@@ -26,6 +26,7 @@ export const KIND_STYLE = {
   seed: { label: "Starting address", color: "#7c3aed" },
   address: { label: "Address (expanded)", color: "#2563eb" },
   frontier: { label: "Address (not expanded yet)", color: "#93b4f5" },
+  exchange: { label: "Known exchange (Dune labels)", color: "#be185d" },
   hub: { label: "Busy address: exchange or service?", color: "#0d9488" },
   listed: { label: "On a sanctions or scam list", color: "#dc2626" },
   dust: { label: "Dust and zero-value group", color: "#9ca3af" },
@@ -35,6 +36,7 @@ export const KIND_STYLE = {
 function styleKey(attrs) {
   if (attrs.listed?.length) return "listed";
   if (attrs.kind === "dust" || attrs.kind === "more") return attrs.kind;
+  if (attrs.kind === "exchange") return "exchange";
   if (attrs.kind === "hub") return "hub";
   if (attrs.seed) return "seed";
   return attrs.expanded ? "address" : "frontier";
@@ -42,7 +44,7 @@ function styleKey(attrs) {
 
 function nodeSize(attrs) {
   if (attrs.kind === "dust" || attrs.kind === "more") return 4 + Math.min(8, Math.log2(1 + (attrs.count ?? 1)));
-  if (attrs.kind === "hub") return 12;
+  if (attrs.kind === "hub" || attrs.kind === "exchange") return attrs.expanded || attrs.kind === "hub" ? 12 : 8;
   if (attrs.seed) return 11;
   return attrs.expanded ? 7 : 4;
 }
@@ -471,20 +473,21 @@ export default function GraphExplorerPage({ route }) {
           </p>
         </section>
 
-        <NodeDetails key={selectedId + selectedVersion} graph={graph} id={selectedId} unit={unit} running={Boolean(running)} atCap={atCap}
+        <NodeDetails key={selectedId + selectedVersion} graph={graph} id={selectedId} unit={unit} running={Boolean(running)} atCap={atCap} labelCount={status.data?.exchange_labels?.addresses ?? 0}
           onExpand={expandNode} onSelect={(id) => { setSelectedId(id); focusNode(sigmaRef.current, id); }} />
       </div>
     </>
   );
 }
 
-function NodeDetails({ graph, id, unit, running, atCap, onExpand, onSelect }) {
+function NodeDetails({ graph, id, unit, running, atCap, onExpand, onSelect, labelCount }) {
   if (!id || !graph.hasNode(id)) {
     return (
       <aside className="card details">
         <h2>Details</h2>
         <p className="muted small">Click a node to see it here.</p>
         <ul className="small muted plain-list">
+          <li><strong>Exchanges</strong> are named from Dune's community exchange labels{labelCount ? ` (${labelCount.toLocaleString()} addresses loaded)` : " (none loaded yet: set DUNE_API_KEY)"}. Always drawn on their own, never expanded automatically.</li>
           <li><strong>Hubs</strong> are busy addresses (many counterparties, or a full page of history within a day). Exchanges and services look like this; they are not expanded automatically.</li>
           <li><strong>Groups</strong> hold dust and the smaller counterparties of a node. Opening one costs no API call.</li>
           <li>Addresses on a sanctions or scam list are always shown on their own.</li>
@@ -525,7 +528,14 @@ function NodeDetails({ graph, id, unit, running, atCap, onExpand, onSelect }) {
         <>
           <p className="mono small">{a.address}</p>
           {a.listed?.length > 0 && <p className="notice notice-error small">Listed: {a.listed.join(", ")}</p>}
-          {a.hub_reason && <p className="notice notice-warn small">Busy address: {a.hub_reason}. Its counterparties are mostly its customers, so it is not expanded further automatically.</p>}
+          {a.exchange && (
+            <p className="notice small">
+              <strong>{a.exchange.exchange}</strong>{a.exchange.name && a.exchange.name !== a.exchange.exchange ? ` (${a.exchange.name})` : ""}:
+              listed in Dune's community exchange labels{a.exchange.added_by ? `, added by ${a.exchange.added_by}` : ""}
+              {a.exchange.added_date ? ` on ${a.exchange.added_date}` : ""}. A community label, not proof. Exchanges are not expanded automatically.
+            </p>
+          )}
+          {a.hub_reason && !a.exchange && <p className="notice notice-warn small">Busy address: {a.hub_reason}. Its counterparties are mostly its customers, so it is not expanded further automatically.</p>}
           <dl className="grid-dl small">
             <dt>Links</dt><dd>{graph.degree(id).toLocaleString()}</dd>
             <dt>Received</dt><dd>{formatAmount(sum(inEdges), unit)} ({inEdges.length} in)</dd>

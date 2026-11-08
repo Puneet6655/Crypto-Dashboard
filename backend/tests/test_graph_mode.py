@@ -165,3 +165,63 @@ def test_expand_route_streams_ndjson():
         app.dependency_overrides.pop(get_bitcoin_provider, None)
         app.dependency_overrides.pop(get_indicator_index, None)
         gx._expander = None
+
+
+# ---- exchange labels (Dune cex.addresses) ----------------------------------------------------------
+
+def test_exchange_labels_name_nodes_and_stop_the_walk():
+    from app.intelligence.cex_labels import CexLabels
+    labels = CexLabels([{"blockchain": "bitcoin", "address": addr(3), "cex_name": "Binance",
+                         "distinct_name": "Binance 7", "added_by": "someone", "added_date": "2024-01-01"},
+                        {"blockchain": "ethereum", "address": addr(4), "cex_name": "Kraken"}])
+    n = asyncio.run(gx.fetch_bitcoin(FakeBitcoin({ME: me_page()}), ME))
+    _, nodes, _, next_up = gx.build_batch(n, per_node_limit=10, index=None, labels=labels)
+    binance = next(node for node in nodes if node.get("address") == addr(3))
+    assert binance["kind"] == "exchange" and binance["label"] == "Binance 7"
+    assert binance["exchange"]["exchange"] == "Binance"
+    assert addr(3) not in next_up  # exchanges are not walked through
+    assert all(node["kind"] != "exchange" for node in nodes if node.get("address") == addr(4))  # other chain
+
+    # An expanded exchange is treated like a hub: only its top counterparties are drawn.
+    labels_me = CexLabels([{"blockchain": "bitcoin", "address": ME, "cex_name": "Coinbase"}])
+    center, nodes, _, _ = gx.build_batch(n, per_node_limit=40, index=None, labels=labels_me)
+    assert center["kind"] == "exchange" and center["label"] == "Coinbase"
+    assert sum(node["kind"] == "address" for node in nodes) == gx.HUB_TOP
+
+
+def test_dune_download_follows_the_execution(tmp_path):
+    import httpx
+    from app.intelligence import cex_labels
+
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        assert request.headers["X-Dune-Api-Key"] == "k" * 20
+        if request.url.path.endswith("/sql/execute"):
+            assert "cex.addresses" in json.loads(request.content)["sql"]
+            return httpx.Response(200, json={"execution_id": "E1", "state": "QUERY_STATE_PENDING"})
+        if request.url.path.endswith("/status"):
+            return httpx.Response(200, json={"state": "QUERY_STATE_COMPLETED"})
+        if "page2" in str(request.url):
+            return httpx.Response(200, json={"result": {"rows": [{"blockchain": "solana", "address": "So1", "cex_name": "OKX"}]}})
+        return httpx.Response(200, json={"result": {"rows": [
+            {"blockchain": "ethereum", "address": "0xABCDEF0000000000000000000000000000000001", "cex_name": "Binance",
+             "distinct_name": "Binance 1"}]}, "next_uri": "https://api.dune.com/api/v1/execution/E1/results?page2=1"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    labels = cex_labels.refresh(tmp_path, api_key="k" * 20, client=client)
+    assert labels.lookup("ethereum", "0xabcdef0000000000000000000000000000000001").name == "Binance 1"
+    assert labels.lookup("solana", "So1").exchange == "OKX"
+    assert cex_labels.load(tmp_path).status()["addresses"] == 2
+    assert calls[0].endswith("/sql/execute")
+
+
+def test_dune_bad_key_is_a_readable_error(tmp_path):
+    import httpx
+    import pytest
+    from app.intelligence import cex_labels
+
+    client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(401, json={"error": "invalid"})))
+    with pytest.raises(RuntimeError, match="refused the API key"):
+        cex_labels.refresh(tmp_path, api_key="bad", client=client)
