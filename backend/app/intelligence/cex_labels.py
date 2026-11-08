@@ -2,13 +2,10 @@
 
 The table is built from hand-curated seed lists in Dune's Spellbook (github.com/duneanalytics/spellbook,
 models/_sector/cex/addresses), with the exchange name, a distinct name per address ("Binance 14"),
-who added it and when. We download the rows for the chains the dashboard supports once a week with
-one SQL query through Dune's API (DUNE_API_KEY in backend/.env) and look addresses up locally, so
-graph mode spends no Dune credits per lookup.
-
-Cost: one execution plus about 4 data points per row (the free plan has 2,500 credits a month and
-counts 1,000 data points as 1 credit), so a weekly refresh of a few thousand rows costs a few dozen
-credits a month.
+who added it and when. Once a week we read those seed files from GitHub (free, no key); only if that
+fails do we run one SQL query through Dune's API (DUNE_API_KEY), which costs credits (free plan: 2,500
+a month, 1 credit per 1,000 data points exported, plus the account's own datapoint limit). Lookups are
+local, so graph mode spends nothing per lookup.
 
 Licence: Spellbook is under the Business Source License 1.1 until 3 March 2027 (then GPL-3.0). Its
 grant forbids using it for a "Data or Analytics Platform" that gives third parties access to its
@@ -151,7 +148,7 @@ class CexLabels:
         for chain, _ in self.labels:
             counts[chain] = counts.get(chain, 0) + 1
         return {"source": SOURCE_TITLE, "retrieved_at": self.retrieved_at, "addresses": len(self.labels),
-                "per_chain": counts, "via": self.via, "api_problem": self.api_problem}
+                "per_chain": counts, "via": self.via, "fallback_reason": self.api_problem}
 
 
 # ---- download -------------------------------------------------------------------------------------
@@ -204,22 +201,23 @@ def refresh(folder: Path = DEFAULT_DIR, api_key: str | None = None, client: http
             github_client: httpx.Client | None = None) -> CexLabels:
     """Download and save a new snapshot, then make it the one in use.
 
-    Tries the Dune API first (when a key is set), then the same seed lists on GitHub."""
-    api_key = api_key or get_settings().dune_api_key
-    via, problem = "dune_api", None
+    Reads Spellbook's seed lists on GitHub first (free, no key). Only if that fails does it ask the Dune
+    API (DUNE_API_KEY), which costs credits; if both fail the previous snapshot stays in use."""
+    via, problem = "github_spellbook", None
     try:
-        if not api_key:
-            raise RuntimeError("DUNE_API_KEY is not set in backend/.env.")
-        rows = download(api_key, client)
+        rows = download_from_github(github_client)
     except RuntimeError as exc:
         problem = str(exc)
-        log.warning("Dune API labels unavailable (%s); reading Spellbook's seed lists on GitHub instead", problem)
-        rows, via = download_from_github(github_client), "github_spellbook"
+        api_key = api_key or get_settings().dune_api_key
+        if not api_key:
+            raise RuntimeError(f"{problem} No DUNE_API_KEY to fall back on.") from None
+        log.warning("GitHub seed lists unavailable (%s); asking the Dune API instead", problem)
+        rows, via = download(api_key, client), "dune_api"
     folder.mkdir(parents=True, exist_ok=True)
     retrieved_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     tmp = folder / (FILE + ".tmp")
     tmp.write_text(json.dumps({"retrieved_at": retrieved_at, "source": SOURCE_URL, "via": via,
-                               "api_problem": problem, "rows": rows}), encoding="utf-8")
+                               "github_problem": problem, "rows": rows}), encoding="utf-8")
     tmp.replace(folder / FILE)
     labels = CexLabels(rows, retrieved_at, via, problem)
     _set(labels, folder)
@@ -233,7 +231,7 @@ def load(folder: Path = DEFAULT_DIR) -> CexLabels:
         return CexLabels([])
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return CexLabels(data.get("rows") or [], data.get("retrieved_at"), data.get("via"), data.get("api_problem"))
+        return CexLabels(data.get("rows") or [], data.get("retrieved_at"), data.get("via"), data.get("github_problem") or data.get("api_problem"))
     except (OSError, ValueError) as exc:
         log.warning("Ignoring the saved Dune label snapshot: %s", exc)
         return CexLabels([])
