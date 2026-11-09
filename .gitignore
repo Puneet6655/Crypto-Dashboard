@@ -17,7 +17,7 @@ dist/
 # Datasets (Elliptic++ etc.): never commit. Put downloads in backend/data/raw/
 backend/data/raw/
 # Trained models and large outputs
-backend/models/
+backend/models/*
 *.parquet
 *.pkl
 *.joblib
@@ -27,3 +27,17 @@ backend/data/*.json
 *service-account*.json
 gcp-key*.json
 backend/data/processed/
+
+# Models zip for the server upload (never commit)
+models-deploy.zip
+# Slim set the server needs (79 MB). Everything else in backend/models stays out.
+!backend/models/registry.json
+!backend/models/scoring_rows.parquet
+!backend/models/known_labels.parquet
+!backend/models/logistic_regression__v2_exp.joblib
+!backend/models/logistic_regression__v2_exp_hops.joblib
+!backend/models/random_forest__v2_exp.joblib
+!backend/models/random_forest__v2_exp_hops.joblib
+!backend/models/xgboost__v2_exp.joblib
+!backend/models/xgboost__v2_exp_hops.joblib
+!backend/models/xgboost__alert_hops.joblib
