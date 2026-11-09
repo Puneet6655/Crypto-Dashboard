@@ -1,0 +1,25 @@
+# Keep secrets and datasets out of the image. Keys go in the host's env var settings.
+.env
+.env.*
+!.env.example
+.venv
+data
+reports
+training
+tests
+scripts
+__pycache__
+.pytest_cache
+*.pyc
+# Only the slim models committed to git go in the image.
+models/*
+!models/registry.json
+!models/scoring_rows.parquet
+!models/known_labels.parquet
+!models/logistic_regression__v2_exp.joblib
+!models/logistic_regression__v2_exp_hops.joblib
+!models/random_forest__v2_exp.joblib
+!models/random_forest__v2_exp_hops.joblib
+!models/xgboost__v2_exp.joblib
+!models/xgboost__v2_exp_hops.joblib
+!models/xgboost__alert_hops.joblib
