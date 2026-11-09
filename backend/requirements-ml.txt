@@ -1,0 +1,15 @@
+# Data and model packages (Milestone 4 onwards). Install with:
+#   pip install -r requirements-ml.txt
+-r requirements.txt
+numpy==2.5.3
+pandas==3.0.6
+# BigQuery public Bitcoin data (training/pull_bigquery.py)
+google-cloud-bigquery==3.47.0
+pyarrow==26.0.0
+db-dtypes==1.9.0
+# Models (training/compare_models.py, training/train_models.py)
+scikit-learn==1.9.1
+xgboost==3.4.1
+joblib==1.6.0
+# SHAP explanations for the Models page and the model methods (app/ml/explain.py)
+shap==0.54.1

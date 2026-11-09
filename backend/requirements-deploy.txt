@@ -1,0 +1,10 @@
+# What the API needs on a server (Dockerfile). Training-only packages (BigQuery, pytest) are left out.
+-r requirements.txt
+numpy==2.5.3
+pandas==3.0.6
+pyarrow==26.0.0
+scikit-learn==1.9.1
+# Same xgboost, without the ~300 MB of GPU libraries the normal wheel pulls in on Linux.
+xgboost-cpu==3.4.1
+joblib==1.6.0
+shap==0.54.1

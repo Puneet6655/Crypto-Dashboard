@@ -3,7 +3,9 @@ from datetime import datetime, timezone
 
 import httpx
 
+from app.features.wallet_window import BlockStat
 from app.providers.base import BitcoinProvider, ProviderError
+from app.usage import meter, path_kind
 from app.schemas.bitcoin import (
     ActivityTotals,
     AddressSummary,
@@ -47,9 +49,12 @@ class MempoolSpaceProvider(BitcoinProvider):
             async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self._transport) as client:
                 response = await client.get(url, headers={"Accept": "application/json"})
         except httpx.TimeoutException:
+            meter.record(self.name, path_kind(path), ok=False)
             raise ProviderError(f"{self.name} did not answer within {self.timeout_seconds} seconds", 504)
         except httpx.HTTPError as exc:
+            meter.record(self.name, path_kind(path), ok=False)
             raise ProviderError(f"Could not reach {self.name}: {exc.__class__.__name__}", 502)
+        meter.record(self.name, path_kind(path), ok=response.status_code < 400 or response.status_code in (400, 404))
 
         if response.status_code == 400 or response.status_code == 404:
             raise ProviderError(f"{self.name} rejected the request: {response.text[:200]}", 404)
@@ -74,9 +79,9 @@ class MempoolSpaceProvider(BitcoinProvider):
             provenance=Provenance(provider=self.name, source_url=url, retrieved_at=_now(), data_mode="live"),
         )
 
-    async def get_transaction(self, txid: str) -> TransactionSummary:
-        """Fetch one transaction with its inputs, outputs and confirmation status."""
-        data, url = await self._get_json(f"/tx/{txid}")
+    def _to_tx_summary(self, data: dict, url: str) -> TransactionSummary:
+        """Convert one provider transaction object into our TransactionSummary."""
+        txid = data["txid"]
         status = data.get("status", {})
         confirmed = bool(status.get("confirmed"))
         block_time = status.get("block_time")
@@ -97,10 +102,45 @@ class MempoolSpaceProvider(BitcoinProvider):
             block_height=status.get("block_height"),
             block_time=datetime.fromtimestamp(block_time, tz=timezone.utc) if block_time else None,
             fee_sats=data.get("fee"),
+            weight=data.get("weight"),
             inputs=inputs,
             outputs=outputs,
             provenance=Provenance(provider=self.name, source_url=url, retrieved_at=_now(), data_mode="live"),
         )
+
+    async def get_transaction(self, txid: str) -> TransactionSummary:
+        """Fetch one transaction with its inputs, outputs and confirmation status."""
+        data, url = await self._get_json(f"/tx/{txid}")
+        return self._to_tx_summary(data, url)
+
+    async def get_address_transactions(self, address: str, after_txid: str | None = None) -> list[TransactionSummary]:
+        """Fetch one page of an address's transactions, newest first.
+
+        Without after_txid: unconfirmed transactions plus the newest confirmed ones.
+        With after_txid: the next page of confirmed transactions after that txid.
+        """
+        path = f"/address/{address}/txs" if after_txid is None else f"/address/{address}/txs/chain/{after_txid}"
+        data, url = await self._get_json(path)
+        if not isinstance(data, list):
+            raise ProviderError(f"{self.name} returned an unexpected transaction list", 502)
+        return [self._to_tx_summary(item, url) for item in data]
+
+    async def get_block_stats(self, height: int) -> list[BlockStat]:
+        """Tx count and total fees for up to 15 blocks ending at `height`, newest first.
+
+        Used for the network-context features (see app/features/wallet_window.py).
+        """
+        data, _ = await self._get_json(f"/v1/blocks/{height}")
+        if not isinstance(data, list):
+            raise ProviderError(f"{self.name} returned an unexpected block list", 502)
+        return [
+            BlockStat(
+                height=int(block["height"]),
+                tx_count=int(block["tx_count"]),
+                total_fees_sats=int((block.get("extras") or {}).get("totalFees", 0)),
+            )
+            for block in data
+        ]
 
     async def health(self) -> ProviderHealth:
         """Ask for the current block height. Never raises: failures are reported in the result."""

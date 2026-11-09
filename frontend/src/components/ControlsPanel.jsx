@@ -4,12 +4,20 @@ import AnalysisMethodSelector from "./AnalysisMethodSelector.jsx";
 
 // Left column: everything the analyst chooses before pressing Start.
 // It holds no state of its own; App passes values down and gets changes back.
+// It is a <form>, so pressing Enter in the text box starts the investigation.
 export default function ControlsPanel({ form, onFormChange, onCaseChange, onStart, isLoading }) {
   const mode = MODES.find((m) => m.id === form.mode);
   const cases = FIXTURE_CASES.filter((c) => c.mode === form.mode);
 
   return (
-    <section className="card controls" aria-label="Investigation controls">
+    <form
+      className="card controls"
+      aria-label="Investigation controls"
+      onSubmit={(event) => {
+        event.preventDefault(); // stop the browser reloading the page
+        onStart();
+      }}
+    >
       <label className="field">
         <span className="field-label">Investigation mode</span>
         <select value={form.mode} onChange={(event) => onFormChange({ mode: event.target.value })}>
@@ -55,9 +63,9 @@ export default function ControlsPanel({ form, onFormChange, onCaseChange, onStar
         onChange={(method) => onFormChange({ method })}
       />
 
-      <button className="primary" type="button" onClick={onStart} disabled={isLoading}>
+      <button className="primary" type="submit" disabled={isLoading}>
         {isLoading ? "Investigating..." : "Start Investigation"}
       </button>
-    </section>
+    </form>
   );
 }
