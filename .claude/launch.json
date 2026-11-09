@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "C:\\dev\\payments-dashboard\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--port", "8000", "--reload", "--app-dir", "C:\\dev\\payments-dashboard\\backend", "--reload-dir", "C:\\dev\\payments-dashboard\\backend\\app"],
+      "cwd": "C:\\dev\\payments-dashboard\\backend",
+      "port": 8000
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "C:\\dev\\payments-dashboard\\frontend",
+      "port": 5173
+    }
+  ]
+}

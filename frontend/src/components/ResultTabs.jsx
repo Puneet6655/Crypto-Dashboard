@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect } from "react";
+import { caseItemAttrs, itemFromNode } from "../cases/caseItems.js";
+import ShapChart from "./ShapChart.jsx";
 
-const TABS = ["Findings", "Why Flagged?", "Evidence", "Provenance", "Explanation", "Evidence Assessment"];
+export const TABS = ["Findings", "Why Flagged?", "Evidence", "Provenance", "Explanation", "Evidence Assessment"];
 
 // Build a plain-language summary only from the findings and evidence we hold.
 // Milestone 14 grows this into the AI Analyst; it never adds facts of its own.
@@ -10,8 +12,15 @@ function templateSummary(result) {
 }
 
 // Bottom area: six views of the same result.
-export default function ResultTabs({ result, highlightedEvidence, onEvidenceClick }) {
-  const [active, setActive] = useState("Findings");
+// App owns which tab is open ("active"), so the graph and the details panel
+// can open the Evidence tab too. This is called lifting state up.
+export default function ResultTabs({ result, active, onTabChange: setActive, highlightedEvidence, onEvidenceClick, onSelect }) {
+  // When a piece of evidence is highlighted, scroll it into view.
+  useEffect(() => {
+    if (active !== "Evidence" || !highlightedEvidence) return;
+    document.getElementById(`evidence-${highlightedEvidence}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [active, highlightedEvidence]);
+
   if (!result) return null;
 
   return (
@@ -45,18 +54,42 @@ export default function ResultTabs({ result, highlightedEvidence, onEvidenceClic
           <ul className="plain-list">
             {result.findings.map((f) => (
               <li key={f.id}>
-                <strong>{f.title}</strong> <span className="badge">{f.kind}</span>
+                <strong>{f.title}</strong> <span className={`badge badge-${f.kind}`}>{f.kind}</span>
                 <div className="small">
                   Evidence:{" "}
                   {f.evidence_ids.map((id) => (
-                    <button key={id} type="button" className="link" onClick={() => { onEvidenceClick(id); setActive("Evidence"); }}>
+                    <button key={id} type="button" className="link" onClick={() => onEvidenceClick(id)}>
                       {id}
                     </button>
                   ))}
+                  {" "}· Show in graph:{" "}
+                  {f.entity_ids.map((id) => {
+                    const node = result.graph.nodes.find((n) => n.id === id);
+                    return (
+                      <button key={id} type="button" className="link" onClick={() => onSelect(id)}
+                        {...caseItemAttrs(itemFromNode(node))}>
+                        {node?.label ?? id}
+                      </button>
+                    );
+                  })}
                 </div>
               </li>
             ))}
           </ul>
+        )}
+
+        {active === "Why Flagged?" && result.explanation && (
+          <div className="why-model">
+            <p>
+              <strong>{result.explanation.model.name}</strong>: score {result.explanation.score.toFixed(3)},{" "}
+              {result.explanation.flagged ? "at or above" : "below"} its threshold {result.explanation.threshold.toFixed(2)}.{" "}
+              <span className="pill pill-dev">
+                {result.explanation.benchmark === "live" ? "live score, 2016-17 labels" : "offline benchmark"}
+              </span>
+            </p>
+            <p className="small muted">{result.explanation.note}</p>
+            <ShapChart explanation={result.explanation.explanation} />
+          </div>
         )}
 
         {active === "Why Flagged?" && (
@@ -74,9 +107,10 @@ export default function ResultTabs({ result, highlightedEvidence, onEvidenceClic
         {active === "Evidence" && (
           <ul className="plain-list">
             {result.evidence.map((e) => (
-              <li key={e.id} className={e.id === highlightedEvidence ? "highlight" : ""}>
+              <li key={e.id} id={`evidence-${e.id}`} className={e.id === highlightedEvidence ? "highlight" : ""}>
                 <strong>{e.id}</strong> {e.source}
                 <div className="small mono">{e.source_url}</div>
+                <div className="small muted">Retrieved {e.retrieved_at} with {e.method_version}</div>
                 <blockquote>{e.excerpt}</blockquote>
               </li>
             ))}
@@ -86,6 +120,7 @@ export default function ResultTabs({ result, highlightedEvidence, onEvidenceClic
         {active === "Provenance" && (
           <dl className="grid-dl">
             <dt>Investigation</dt><dd>{result.investigation_id}</dd>
+            {result.created_at && (<><dt>Created</dt><dd>{result.created_at}</dd></>)}
             <dt>Data mode</dt><dd>{result.data_mode}</dd>
             <dt>Method</dt><dd>{result.method}</dd>
             <dt>Schema</dt><dd>{result.schema_version}</dd>

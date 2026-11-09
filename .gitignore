@@ -1,32 +1,43 @@
-# Build and Release Folders
-bin-debug/
-bin-release/
-[Oo]bj/
-[Bb]in/
-
-# Other files and folders
-.settings/
-
-# Executables
-*.swf
-*.air
-*.ipa
-*.apk
-
-# Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
-# should NOT be excluded as they contain compiler settings and other important
-# information for Eclipse / Flash Builder.
-
 # Python
 .venv/
 __pycache__/
 .pytest_cache/
 *.pyc
-# Secrets and local data
+
+# Secrets and local settings
 .env
+.env.local
 *.db
+
 # Frontend
 node_modules/
 dist/
-# Vercel
 .vercel/
+
+# Datasets (Elliptic++ etc.): never commit. Put downloads in backend/data/raw/
+backend/data/raw/
+# Trained models and large outputs
+backend/models/*
+*.parquet
+*.pkl
+*.joblib
+
+# Cloud credentials (Google service-account keys etc.): never commit
+backend/data/*.json
+*service-account*.json
+gcp-key*.json
+backend/data/processed/
+
+# Models zip for the server upload (never commit)
+models-deploy.zip
+# Slim set the server needs (79 MB). Everything else in backend/models stays out.
+!backend/models/registry.json
+!backend/models/scoring_rows.parquet
+!backend/models/known_labels.parquet
+!backend/models/logistic_regression__v2_exp.joblib
+!backend/models/logistic_regression__v2_exp_hops.joblib
+!backend/models/random_forest__v2_exp.joblib
+!backend/models/random_forest__v2_exp_hops.joblib
+!backend/models/xgboost__v2_exp.joblib
+!backend/models/xgboost__v2_exp_hops.joblib
+!backend/models/xgboost__alert_hops.joblib

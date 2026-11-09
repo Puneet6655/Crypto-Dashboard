@@ -5,7 +5,14 @@ import { FIXTURE_CASES } from "../data/fixtures.js";
 const PATTERNS = {
   bitcoin_address: /^([13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[qp][02-9ac-hj-np-z]{38,58})$/,
   bitcoin_txid: /^[0-9a-fA-F]{64}$/,
-  url_domain: /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/.*)?$/i,
+  ethereum_address: /^0x[0-9a-fA-F]{40}$/,
+  ethereum_txid: /^0x[0-9a-fA-F]{64}$/,
+  base_address: /^0x[0-9a-fA-F]{40}$/,
+  base_txid: /^0x[0-9a-fA-F]{64}$/,
+  solana_address: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+  solana_txid: /^[1-9A-HJ-NP-Za-km-z]{64,90}$/,
+  // Letters in any script, so look-alike names such as myétherwallet.com can be checked.
+  url_domain: /^(https?:\/\/)?([\p{L}\p{N}-]+\.)+[\p{L}\p{N}-]{2,}(:\d+)?([\/?#].*)?$/iu,
   x402_payment_id: /^[A-Za-z0-9._:-]{4,128}$/,
 };
 
