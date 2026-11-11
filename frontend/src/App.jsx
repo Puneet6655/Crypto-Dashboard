@@ -19,6 +19,11 @@ import UsersPage from "./pages/UsersPage.jsx";
 import AccountPage from "./pages/AccountPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 
+// Optional Web3-style login page, loaded only when switched on, so the normal page is unchanged by default.
+// Turn it on with VITE_LOGIN_DESIGN=web3 (e.g. in Vercel), or try it by adding ?web3 to the URL.
+const Web3LoginPage = lazy(() => import("./pages/Web3LoginPage.jsx"));
+const WEB3_LOGIN = import.meta.env.VITE_LOGIN_DESIGN === "web3" || new URLSearchParams(window.location.search).has("web3");
+
 // Graph explorer pulls in WebGL drawing (Sigma) and a layout worker: load it only when opened.
 const GraphExplorerPage = lazy(() => import("./pages/GraphExplorerPage.jsx"));
 
@@ -55,7 +60,7 @@ function Gate() {
       </div>
     );
   }
-  if (!user) return <LoginPage />;
+  if (!user) return WEB3_LOGIN ? <Suspense fallback={null}><Web3LoginPage /></Suspense> : <LoginPage />;
   return <Shell />;
 }
 
