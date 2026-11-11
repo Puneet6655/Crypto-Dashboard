@@ -1,0 +1,92 @@
+/* Web3-style login page (pages/Web3LoginPage.jsx only). Every class starts with w3- so the normal
+   dashboard styles in app.css are never touched. Dark purple "Web3" look with glass, a light beam, floating coins and a particle swirl */
+.w3-login { --l-bg: #0c0818; --l-glass: rgba(255, 255, 255, 0.06); --l-glass-2: rgba(255, 255, 255, 0.1); --l-line: rgba(255, 255, 255, 0.14);
+  --l-text: #ede9fe; --l-muted: #a5a0c4; --l-violet: #8b5cf6; --l-glow: rgba(139, 92, 246, 0.55);
+  min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, 1fr); color: var(--l-text);
+  background: radial-gradient(ellipse 60% 50% at 30% 0%, rgba(168, 85, 247, 0.32), transparent 70%),
+    radial-gradient(ellipse 50% 60% at 85% 100%, rgba(236, 72, 153, 0.16), transparent 70%),
+    radial-gradient(circle at 30% 60%, rgba(91, 33, 182, 0.35), transparent 55%), var(--l-bg); overflow: hidden; }
+.w3-login-art { position: relative; overflow: hidden; display: grid; place-items: center; padding: 48px; isolation: isolate; }
+.w3-login-art-inner { position: relative; z-index: 2; max-width: 520px; width: 100%; display: grid; gap: 16px; justify-items: center; text-align: center; }
+.w3-login-art h2 { font-size: 36px; color: #fff; margin: 0; letter-spacing: -0.03em; font-weight: 600;
+  background: linear-gradient(180deg, #fff 30%, #c4b5fd); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.w3-login-art p { margin: 0; color: var(--l-muted); font-size: 16px; max-width: 440px; }
+.w3-login-pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; font-size: 13px; color: #ddd6fe;
+  background: var(--l-glass); border: 1px solid var(--l-line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+
+/* The glowing vertical beam behind the swirl */
+.w3-login-beam { position: absolute; z-index: 0; left: 50%; top: -10%; bottom: -10%; width: 140px; transform: translateX(-50%); pointer-events: none;
+  background: radial-gradient(ellipse 50% 50% at 50% 50%, rgba(196, 181, 253, 0.55), rgba(139, 92, 246, 0.18) 45%, transparent 75%);
+  filter: blur(18px); animation: w3-beam-breathe 5s ease-in-out infinite; }
+.w3-login-beam::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 3px; transform: translateX(-50%);
+  background: linear-gradient(180deg, transparent, #f5f3ff 30%, #fff 50%, #f5f3ff 70%, transparent); filter: blur(1.5px); }
+@keyframes w3-beam-breathe { 0%, 100% { opacity: 0.75; transform: translateX(-50%) scaleX(1); } 50% { opacity: 1; transform: translateX(-50%) scaleX(1.25); } }
+
+/* Falling light lines */
+.w3-login-rain { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.w3-login-rain span { position: absolute; top: -30%; width: 1px; height: 110px; background: linear-gradient(180deg, transparent, rgba(221, 214, 254, 0.7));
+  animation: w3-rain-fall linear infinite; opacity: 0.6; }
+@keyframes w3-rain-fall { to { transform: translateY(160vh); } }
+
+/* Particle swirl with coin badges orbiting around it */
+.w3-login-orb { position: relative; width: min(340px, 80vw); aspect-ratio: 1; margin: 8px 0; }
+.w3-login-swirl { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 0 6px var(--l-glow)); }
+.w3-coin { position: absolute; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; font-size: 22px; font-weight: 700; color: #fff;
+  background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.04) 60%); border: 1px solid var(--l-line);
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.35), inset 0 0 12px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: w3-coin-float 6s ease-in-out infinite; }
+.w3-coin-bitcoin { left: -14%; top: 18%; color: #fbbf24; }
+.w3-coin-ethereum { right: -14%; top: 10%; color: #c7d2fe; animation-delay: -1.5s; }
+.w3-coin-solana { left: -6%; bottom: 4%; color: #5eead4; animation-delay: -3s; width: 44px; height: 44px; }
+.w3-coin-tether { right: -8%; bottom: 12%; color: #6ee7b7; animation-delay: -4.5s; width: 44px; height: 44px; font-size: 19px; }
+@keyframes w3-coin-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-14px) rotate(4deg); } }
+
+/* Glass stat cards with count-up numbers */
+.w3-login-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; width: 100%; margin-top: 12px; }
+.w3-login-stat { display: grid; gap: 4px; padding: 16px 14px; border-radius: 16px; text-align: left; background: linear-gradient(160deg, var(--l-glass-2), var(--l-glass));
+  border: 1px solid var(--l-line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
+.w3-login-stat strong { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; color: #fff; font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 18px rgba(196, 181, 253, 0.6); }
+.w3-login-stat span { font-size: 12.5px; color: var(--l-muted); line-height: 1.35; }
+
+/* The sign-in form as a glass card */
+.w3-login-panel { position: relative; z-index: 2; display: grid; place-items: center; padding: 32px 20px; }
+.w3-login-card { width: min(420px, 100%); display: grid; gap: 14px; padding: 32px 28px; border-radius: 24px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03)); border: 1px solid var(--l-line);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.03) inset, 0 0 60px rgba(139, 92, 246, 0.15);
+  animation: w3-card-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes w3-card-in { from { opacity: 0; transform: translateY(16px) scale(0.98); } to { opacity: 1; transform: none; } }
+.w3-login-card h1 { font-size: 26px; color: #fff; letter-spacing: -0.02em; }
+.w3-login-card p { margin: 0; }
+.w3-login-card .muted, .w3-login .field-label { color: var(--l-muted); }
+.w3-login-card .segmented { justify-self: start; background: rgba(255, 255, 255, 0.05); border-color: var(--l-line); }
+.w3-login-card .segmented button { color: var(--l-muted); }
+.w3-login-card .segmented button.active { background: rgba(139, 92, 246, 0.35); color: #fff; box-shadow: 0 0 16px rgba(139, 92, 246, 0.35); }
+.w3-login-card input { background: rgba(255, 255, 255, 0.05); border-color: var(--l-line); color: #fff; }
+.w3-login-card input:focus { border-color: #a78bfa; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.3); }
+.w3-login-card button.primary { padding: 12px 16px; border-radius: 999px; background: linear-gradient(135deg, #7c3aed, #a855f7 60%, #c084fc);
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25); transition: transform 0.15s, box-shadow 0.15s; }
+.w3-login-card button.primary:hover:not(:disabled) { background: linear-gradient(135deg, #6d28d9, #9333ea 60%, #a855f7); transform: translateY(-1px);
+  box-shadow: 0 12px 32px rgba(124, 58, 237, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.w3-login-card .notice.warn { background: rgba(251, 191, 36, 0.1); border-color: rgba(251, 191, 36, 0.35); color: #fde68a; }
+.w3-login-card .notice.error { background: rgba(248, 113, 113, 0.1); border-color: rgba(248, 113, 113, 0.35); color: #fecaca; }
+
+@media (prefers-reduced-motion: reduce) {
+  .w3-login-beam, .w3-login-rain span, .w3-coin, .w3-login-card { animation: none; }
+  .w3-login-rain { display: none; }
+}
+
+@media (max-width: 900px) {
+  .w3-login { grid-template-columns: 1fr; }
+  .w3-login-art { padding: 32px 16px 8px; }
+  .w3-login-art h2 { font-size: 28px; }
+  .w3-login-orb { width: min(240px, 60vw); }
+  .w3-coin { width: 40px; height: 40px; font-size: 17px; }
+  .w3-coin-bitcoin, .w3-coin-solana { left: -10%; }
+  .w3-coin-ethereum, .w3-coin-tether { right: -10%; }
+  .w3-login-stats { gap: 8px; }
+  .w3-login-stat { padding: 12px 10px; }
+  .w3-login-stat strong { font-size: 20px; }
+  .w3-login-card { padding: 24px 18px; }
+}
