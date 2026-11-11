@@ -1,0 +1,64 @@
+/* Page and card entrance animations.
+   Everything here only applies when <html> has the "mo-on" class, which
+   enableMotion.js adds. Without it this file does nothing.
+
+   How it works: each page's sections (header, cards) are new elements every
+   time you switch page, so a CSS animation on them plays once on arrival.
+   No extra package is needed. */
+
+:root {
+  --mo-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --mo-dur: 0.38s;
+  --mo-step: 45ms;
+}
+
+@keyframes mo-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes mo-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Every section of a page rises in, one after another. */
+html.mo-on .page > * {
+  animation: mo-rise var(--mo-dur) var(--mo-ease) both;
+}
+html.mo-on .page > *:nth-child(2) { animation-delay: calc(var(--mo-step) * 1); }
+html.mo-on .page > *:nth-child(3) { animation-delay: calc(var(--mo-step) * 2); }
+html.mo-on .page > *:nth-child(4) { animation-delay: calc(var(--mo-step) * 3); }
+html.mo-on .page > *:nth-child(5) { animation-delay: calc(var(--mo-step) * 4); }
+html.mo-on .page > *:nth-child(n+6) { animation-delay: calc(var(--mo-step) * 5); }
+
+/* Cards inside the card grids (Status, Sources, Cases list) follow the same
+   pattern, so a grid fills in left to right rather than all at once. */
+html.mo-on :is(.status-grid, .source-grid, .case-grid) > * {
+  animation: mo-rise var(--mo-dur) var(--mo-ease) both;
+}
+html.mo-on :is(.status-grid, .source-grid, .case-grid) > *:nth-child(2) { animation-delay: calc(var(--mo-step) * 1); }
+html.mo-on :is(.status-grid, .source-grid, .case-grid) > *:nth-child(3) { animation-delay: calc(var(--mo-step) * 2); }
+html.mo-on :is(.status-grid, .source-grid, .case-grid) > *:nth-child(4) { animation-delay: calc(var(--mo-step) * 3); }
+html.mo-on :is(.status-grid, .source-grid, .case-grid) > *:nth-child(5) { animation-delay: calc(var(--mo-step) * 4); }
+html.mo-on :is(.status-grid, .source-grid, .case-grid) > *:nth-child(n+6) { animation-delay: calc(var(--mo-step) * 5); }
+
+/* Working pages stay calm: a short fade only, no movement, no stagger. */
+html.mo-on:is([data-mo-page="investigate"], [data-mo-page="graph"], [data-mo-page="cases"]) :is(.page > *, .case-grid > *) {
+  animation: mo-fade 0.2s ease-out both;
+  animation-delay: 0s;
+}
+
+/* Smoother sidebar highlight when the active page changes. */
+html.mo-on .nav-item {
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* People who ask their system for less motion get none. */
+@media (prefers-reduced-motion: reduce) {
+  html.mo-on .page > *,
+  html.mo-on :is(.status-grid, .source-grid, .case-grid) > * {
+    animation: none;
+  }
+  html.mo-on .nav-item { transition: none; }
+}
