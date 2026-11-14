@@ -8,10 +8,10 @@ from fastapi import Depends, FastAPI
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.alerts.poller import BITCOIN, SOLANA, PollingWatcher, bitcoin_fetch, solana_fetch
+from app.alerts.poller import BASE, BITCOIN, SOLANA, PollingWatcher, base_fetch, bitcoin_fetch, solana_fetch
 from app.alerts.watcher import AlertWatcher, set_chain_watcher, set_watcher
 from app.alerts.watchlist import make_chain_loader, make_loader
-from app.api.routes import admin, alerts, auth, bigquery, bitcoin, cases, ethereum, graph, indicators, investigations, models, solana, sources, system_status
+from app.api.routes import admin, alerts, auth, bigquery, bitcoin, cases, ethereum, graph, indicators, investigations, models, solana, sources, system_status, x402
 from app.auth.deps import require_viewer
 from app.config import get_settings
 from app.db import NullStore, open_store
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
                                make_loader(lambda: app.state.store, settings.live_alerts_watch_ofac))
         set_watcher(watcher)
         watcher_task = asyncio.create_task(watcher.run())
-    # Solana (Alchemy) and Bitcoin (mempool.space) watch the hand-made watchlist by polling (app/alerts/poller.py).
+    # Base and Solana (Alchemy) and Bitcoin (mempool.space) watch the hand-made watchlist by polling (app/alerts/poller.py).
     pollers = {}
     if settings.live_alerts_enabled:
         from app.providers.registry import shared_bitcoin_provider, shared_solana_provider
@@ -64,6 +64,23 @@ async def lifespan(app: FastAPI):
         if settings.alchemy_enabled and settings.alchemy_api_key:
             sol = shared_solana_provider(settings.alchemy_api_key, settings.http_timeout_seconds)
             pollers["solana"] = PollingWatcher(SOLANA, solana_fetch(sol), make_chain_loader(lambda: app.state.store, "solana"))
+            # Base: the same Alchemy source as Base lookups, so pacing (CU per second) is shared.
+            from app.providers.ethereum_alchemy import AlchemyProvider
+            from app.providers.registry import shared_evm_provider
+
+            base_evm = shared_evm_provider("base", None, None, None, settings.alchemy_api_key, None,
+                                           settings.http_timeout_seconds)
+            base_src = next((s for s in base_evm.sources if isinstance(s, AlchemyProvider)), None)
+            if base_src is not None:
+                pollers["base"] = PollingWatcher(BASE, base_fetch(base_src), make_chain_loader(lambda: app.state.store, "base"))
+    # x402 payments on Base (app/x402/monitor.py): free watchlist via Blockscout, every payment with a CDP key.
+    from app.x402.monitor import X402Monitor, set_monitor
+    from app.x402.snapshot import get_snapshot
+
+    if X402Monitor.enabled_by_env(settings.live_alerts_enabled) and get_snapshot().loaded:
+        x402_monitor = X402Monitor.from_env(get_snapshot())
+        set_monitor(x402_monitor)
+        pollers["x402"] = x402_monitor
     poller_tasks = []
     for chain, poller in pollers.items():
         set_chain_watcher(chain, poller)
@@ -75,6 +92,7 @@ async def lifespan(app: FastAPI):
             await task
     for chain in pollers:
         set_chain_watcher(chain, None)
+    set_monitor(None)
     if watcher_task is not None:
         watcher_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -96,7 +114,7 @@ async def lifespan(app: FastAPI):
     await run_in_threadpool(app.state.store.close)
 
 
-app = FastAPI(title="Payments Intelligence API", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="Blockchain Intelligence API", version="0.4.0", lifespan=lifespan)
 
 # Allow the React dev server (Milestone 2) to call this API from the browser.
 app.add_middleware(
@@ -117,6 +135,7 @@ app.include_router(indicators.router, dependencies=signed_in)
 app.include_router(system_status.router, dependencies=signed_in)
 app.include_router(alerts.router, dependencies=signed_in)
 app.include_router(solana.router, dependencies=signed_in)
+app.include_router(x402.router, dependencies=signed_in)
 app.include_router(models.router, dependencies=signed_in)
 app.include_router(graph.router, dependencies=signed_in)
 app.include_router(cases.router)

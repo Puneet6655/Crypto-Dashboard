@@ -4,6 +4,8 @@ import { LAYOUTS, buildStylesheet, nodeTypeInfo, relationInfo } from "../config/
 import { useCases } from "../cases/CasesContext.jsx";
 import { itemFromNode } from "../cases/caseItems.js";
 import { formatBtc } from "../utils/bitcoinAmount.js";
+import { WEB3_DESIGN } from "../config/w3Design.js";
+import { w3Entrance, w3Hide, w3StartLayout, w3Stylesheet } from "../w3/graphTheme.js";
 
 // Turn our API's { nodes, edges } into the list Cytoscape expects:
 // every element is { data: {...} }, and an edge needs "source" and "target".
@@ -73,6 +75,7 @@ export default function GraphCanvas({
   const containerRef = useRef(null);
   const bundleOfRef = useRef(new Map());
   const layoutRef = useRef(null); // the layout currently animating, if any
+  const firstLayout = useRef(true); // Web3 mode: the first layout of a graph plays the entrance animation
   const [tooltip, setTooltip] = useState(null);
 
   // Cytoscape's event handlers are attached once, so they would keep calling
@@ -96,14 +99,16 @@ export default function GraphCanvas({
     const cy = cytoscape({
       container: containerRef.current,
       elements,
-      style: buildStylesheet(),
-      layout: { name: "grid" }, // placeholder; effect 2 runs the real layout
+      style: WEB3_DESIGN ? w3Stylesheet(buildStylesheet()) : buildStylesheet(),
+      layout: WEB3_DESIGN ? w3StartLayout : { name: "grid" }, // placeholder; effect 2 runs the real layout
       minZoom: 0.05, // low enough that "fit" can always show a 50-node graph
       maxZoom: 4,
       boxSelectionEnabled: false,
       autounselectify: true, // we track selection ourselves in React state
     });
     cyRef.current = cy;
+    firstLayout.current = true;
+    if (WEB3_DESIGN) w3Hide(cy);
 
     // Click (or tap on a touch screen) a node or a link to select it.
     // A bundle selects its first link; the details panel lists the rest.
@@ -158,6 +163,13 @@ export default function GraphCanvas({
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
+    // Web3 mode: the first layout of a new graph plays the "fly out from the middle" entrance.
+    if (WEB3_DESIGN && firstLayout.current) {
+      firstLayout.current = false;
+      const layout = w3Entrance(cy, LAYOUTS[layoutName].options);
+      layoutRef.current = layout;
+      return () => layout.stop();
+    }
     const layout = cy
       .elements(":visible")
       .layout({ ...LAYOUTS[layoutName].options, animate: true, animationDuration: 400, fit: true, padding: 40 });

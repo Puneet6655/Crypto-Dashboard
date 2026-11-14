@@ -151,3 +151,18 @@ def test_alchemy_stays_off_until_enabled():
     on = replace(settings, alchemy_enabled=True)
     assert [s.name for s in get_ethereum_provider(on).sources] == ["etherscan.io", "alchemy.com"]
     assert [s.name for s in get_base_provider(on).sources] == ["alchemy.com"]
+
+
+def test_base_live_alert_fetch_is_two_uncached_calls():
+    """Base live alerts: each check asks again (no cache) and turns transfers into one row per transaction."""
+    from app.alerts.poller import base_fetch
+
+    calls = []
+    fetch = base_fetch(alchemy(calls, chain="base"))
+    rows = asyncio.run(fetch(ADDR))
+    assert calls.count("alchemy_getAssetTransfers") == 2
+    assert [r["tx"] for r in rows] == ["0x" + f"{b:064x}" for b in (105, 104, 103)]  # no NFT rows
+    assert rows[0]["direction"] == "out" and rows[0]["counterparty"] == SANCTIONED and rows[0]["unit"] == "ETH"
+    assert rows[1]["unit"] == "USDC" and rows[2]["direction"] == "in"
+    asyncio.run(fetch(ADDR))
+    assert calls.count("alchemy_getAssetTransfers") == 4

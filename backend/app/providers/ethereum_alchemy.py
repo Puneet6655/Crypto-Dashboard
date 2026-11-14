@@ -286,6 +286,19 @@ class AlchemyProvider:
         finally:
             self._inflight.pop(key, None)
 
+    async def recent_transfers(self, address: str, max_count: int = 20) -> list[dict]:
+        """The newest transfers sent by or to the address (ETH, internal ETH and ERC-20), newest first.
+        Two alchemy_getAssetTransfers calls (240 CU) and no cache, so live alerts see new transfers at once."""
+        address = address.lower()
+        base = {"fromBlock": "0x0", "toBlock": "latest", "category": ["external", "internal", "erc20"],
+                "order": "desc", "withMetadata": False, "excludeZeroValue": True, "maxCount": hex(max_count)}
+        sent, received = await asyncio.gather(
+            self._rpc("alchemy_getAssetTransfers", [{**base, "fromAddress": address}]),
+            self._rpc("alchemy_getAssetTransfers", [{**base, "toAddress": address}]))
+        rows = (sent or {}).get("transfers", []) + (received or {}).get("transfers", [])
+        rows.sort(key=lambda r: to_int(r.get("blockNum"), 16) or 0, reverse=True)
+        return rows
+
     def _common(self, row: dict) -> dict:
         return {"tx_hash": row["hash"].lower(), "block_number": to_int(row.get("blockNum"), 16),
                 "block_time": _iso((row.get("metadata") or {}).get("blockTimestamp"))}

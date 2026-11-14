@@ -22,7 +22,11 @@ ROLE_RANK = {role: rank for rank, role in enumerate(ROLES)}
 
 _EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
 
-_USER_COLUMNS = "id, email, display_name, role, disabled, created_at, last_login_at"
+# user_type, organisation and the consent columns were added later (schema.sql adds them to old databases).
+# The date of birth is checked at sign-up and never stored: age_confirmed_at only records that the check passed.
+USER_COLUMNS = ("id, email, display_name, role, disabled, created_at, last_login_at, user_type, organisation, "
+                "age_confirmed_at, terms_version, terms_accepted_at")
+_USER_COLUMNS = USER_COLUMNS
 
 
 class EmailTaken(ValueError):
@@ -57,13 +61,21 @@ def token_hash(token: str) -> str:
 
 # ---- users ------------------------------------------------------------------------------------
 
-def create_user(pool: ConnectionPool, email: str, display_name: str, password_hash: str, role: str = "viewer") -> dict:
+def create_user(pool: ConnectionPool, email: str, display_name: str, password_hash: str, role: str = "viewer",
+                *, user_type: str | None = None, organisation: str | None = None,
+                terms_version: str | None = None) -> dict:
+    """Create an account. Pass user_type and terms_version for sign-ups (the age check has already passed);
+    accounts made by an admin on the command line leave them empty and complete them at first sign-in."""
+    consented = terms_version is not None
     try:
         with pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                f"""INSERT INTO app_users (email, display_name, password_hash, role)
-                    VALUES (%s, %s, %s, %s) RETURNING {_USER_COLUMNS}""",
-                (normalize_email(email), display_name.strip(), password_hash, role),
+                f"""INSERT INTO app_users (email, display_name, password_hash, role, user_type, organisation,
+                                           age_confirmed_at, terms_version, terms_accepted_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, CASE WHEN %s THEN now() END, %s, CASE WHEN %s THEN now() END)
+                    RETURNING {_USER_COLUMNS}""",
+                (normalize_email(email), display_name.strip(), password_hash, role, user_type, organisation,
+                 consented, terms_version, consented),
             )
             return cur.fetchone()
     except UniqueViolation as exc:
@@ -110,6 +122,32 @@ def update_user(pool: ConnectionPool, user_id: int, *, role: str | None = None, 
             cur.execute("DELETE FROM app_sessions WHERE user_id = %s", (user_id,))
     forget_user(user_id)
     return row
+
+
+def complete_profile(pool: ConnectionPool, user_id: int, user_type: str, organisation: str | None,
+                     terms_version: str) -> dict | None:
+    """Record the age check, user type and acceptance of the current terms for an existing account."""
+    with pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"""UPDATE app_users SET user_type = %s, organisation = %s,
+                       age_confirmed_at = coalesce(age_confirmed_at, now()),
+                       terms_version = %s, terms_accepted_at = now()
+                WHERE id = %s RETURNING {_USER_COLUMNS}""",
+            (user_type, organisation, terms_version, user_id),
+        )
+        return cur.fetchone()
+
+
+def profile_missing(row: dict, terms_version: str) -> list[str]:
+    """What this account still has to give before it can use the dashboard: [] when nothing."""
+    missing = []
+    if not row.get("age_confirmed_at"):
+        missing.append("age")
+    if not row.get("user_type"):
+        missing.append("user_type")
+    if row.get("terms_version") != terms_version:
+        missing.append("terms")
+    return missing
 
 
 def mark_login(pool: ConnectionPool, user_id: int, new_password_hash: str | None = None) -> None:

@@ -165,6 +165,10 @@ async def run_investigation(request: InvestigationRequest, provider: BitcoinProv
 
     ethereum and base are the EVM failover chains (None when no key is set for them).
     """
+    if request.mode == "x402":
+        from app.x402.investigation import investigate_x402
+
+        return await investigate_x402(request, max_nodes, indicators if indicators is not None else get_indicator_index())
     if request.method == "rules_v1":
         from app.services.rules_investigation import investigate_address_lists, investigate_site
 

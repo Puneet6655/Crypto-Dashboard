@@ -20,7 +20,7 @@ from datetime import date, datetime, timedelta, timezone
 
 log = logging.getLogger("app.usage")
 
-# Free plan limits (alchemy.com/pricing and etherscan.io/apis, checked 2026-10-31).
+# Free plan limits (alchemy.com/pricing and etherscan.io/apis checked 2026-10-31, docs.blockscout.com 2026-11-14).
 SOURCES = {
     "alchemy": {
         "label": "Alchemy", "unit": "CU", "period": "month", "quota": 30_000_000,
@@ -36,6 +36,14 @@ SOURCES = {
         "used_for": "Ethereum lookups (primary)",
         "dashboard_url": "https://etherscan.io/myapikey",
         "note": "The daily count resets at 00:00 UTC. At the cap Etherscan blocks the key until the next day.",
+    },
+    "blockscout": {
+        "label": "Blockscout", "unit": "credits", "period": "day", "quota": 100_000,
+        "rate_limit": "5 requests per second",
+        "used_for": "Ethereum lookups (backup after Etherscan)",
+        "dashboard_url": "https://dev.blockscout.com",
+        "note": "Most calls cost 20 credits (about 5,000 calls a day); the count resets at 00:00 UTC. "
+                "The free plan has no Base, Polygon or zkSync since 1 Oct 2026.",
     },
     "mempool.space": {
         "label": "mempool.space", "unit": "calls", "period": "day", "quota": None,

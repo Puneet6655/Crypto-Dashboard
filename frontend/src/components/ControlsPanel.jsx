@@ -1,6 +1,8 @@
 import { INPUT_TYPES, MODES } from "../config/modes.js";
 import { FIXTURE_CASES } from "../data/fixtures.js";
 import AnalysisMethodSelector from "./AnalysisMethodSelector.jsx";
+import { WEB3_DESIGN } from "../config/w3Design.js";
+import W3InputHint from "../w3/W3InputHint.jsx";
 
 // Left column: everything the analyst chooses before pressing Start.
 // It holds no state of its own; App passes values down and gets changes back.
@@ -44,6 +46,7 @@ export default function ControlsPanel({ form, onFormChange, onCaseChange, onStar
           placeholder={INPUT_TYPES[form.inputType].placeholder}
           onChange={(event) => onFormChange({ value: event.target.value, caseId: "" })}
         />
+        {WEB3_DESIGN && <W3InputHint form={form} onFormChange={onFormChange} />}
       </label>
 
       <label className="field">

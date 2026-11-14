@@ -5,6 +5,7 @@ import { formatDate, timeAgo } from "./PageHeader.jsx";
 export const USAGE_ID_BY_SOURCE_NAME = {
   "Alchemy API": "alchemy",
   "Etherscan API V2": "etherscan",
+  "Blockscout PRO API": "blockscout",
   "mempool.space REST API": "mempool.space",
 };
 export function usageIdFor(name) {

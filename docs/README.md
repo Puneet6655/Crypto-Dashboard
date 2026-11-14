@@ -1,6 +1,6 @@
 # Handover
 
-Start here if you are new to the project. In order:
+Start here if you are new to the project. **Taking the project over? Read [HANDOVER_GUIDE.md](HANDOVER_GUIDE.md) first** (one-page-per-topic overview: purpose, where everything lives, git state, rules, results, what is left, blockers; Word copy: HANDOVER_GUIDE.docx). Then, in order:
 
 1. [SETUP.md](SETUP.md): run it on your machine, environment variables, tests.
 2. [ARCHITECTURE.md](ARCHITECTURE.md): how the pieces fit, the result contract, where to extend.

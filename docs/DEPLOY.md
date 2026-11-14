@@ -57,6 +57,7 @@ The deploy files and slim models are on `dashboard-update-2026-10-30`. Railway a
 ```
 DATABASE_URL=...            # from backend/.env (Neon)
 ETHERSCAN_API_KEY=...
+BLOCKSCOUT_API_KEY=...      # Ethereum backup after Etherscan (free key, dev.blockscout.com)
 ALCHEMY_API_KEY=...
 ALCHEMY_ENDPOINT=...
 ALCHEMY_ENABLED=true
@@ -64,6 +65,12 @@ DUNE_API_KEY=...
 FRONTEND_ORIGIN=https://<your-vercel-app>.vercel.app
 AUTH_REQUIRED=true
 SIGNUP_ENABLED=false
+# Shown on the privacy policy and terms (legal pages are a template: have them checked before opening sign-up)
+LEGAL_OPERATOR_NAME=...      # who runs the dashboard (the data controller)
+LEGAL_CONTACT_EMAIL=...      # where privacy questions and data requests go
+LEGAL_JURISDICTION=...       # e.g. Queensland, Australia
+AUDIT_RETENTION_DAYS=365     # optional, audit log kept this long
+INACTIVE_ACCOUNT_DAYS=730    # optional, accounts unused this long are deleted (0 = off)
 ```
 
    Railway sets `PORT` by itself. After the first Vercel deploy, put the real Vercel URL in `FRONTEND_ORIGIN`. You can list several origins, separated by commas.
@@ -75,7 +82,8 @@ SIGNUP_ENABLED=false
 2. **Root Directory**: `frontend`. Framework is detected as Vite, and `frontend/vercel.json` sets the build.
 3. Under **Environment Variables**, add:
    - `VITE_API_BASE_URL` = `https://<railway-domain>`, with no trailing slash, for Production (and Preview if you want it).
-4. Deploy. Vite bakes `VITE_API_BASE_URL` into the build, so **redeploy after changing it**: Deployments → ⋯ → Redeploy.
+   - `VITE_LOGIN_DESIGN` = `web3` to show the animated Web3 design (login, Home, glass pages). Leave it out for the original design. Either way, `?classic` in the URL shows the original and `?web3` shows the new one.
+4. Deploy. Vite bakes `VITE_API_BASE_URL` and `VITE_LOGIN_DESIGN` into the build, so **redeploy after changing it**: Deployments → ⋯ → Redeploy.
 5. Copy the Vercel URL into Railway's `FRONTEND_ORIGIN` (Step 2.3). Railway redeploys on its own.
 
 Every push to the branch then redeploys both.

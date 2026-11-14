@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import Sigma from "sigma";
 import { EdgeArrowProgram } from "sigma/rendering";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
+import { WEB3_DESIGN } from "../config/w3Design.js";
+import { W3_EDGE, W3_EDGE_IN, W3_EDGE_OUT, W3_FADED, W3_KIND_COLORS, W3_SIGMA_SETTINGS } from "../w3/sigmaTheme.js";
 
 // The WebGL drawing for advanced graph mode. Sigma draws with WebGL, so it stays smooth with
 // thousands of nodes where the canvas-based Investigate graph slows down. The graph data itself
@@ -20,9 +22,14 @@ const FA2_SETTINGS = {
   strongGravityMode: false,
 };
 
-export default function SigmaGraph({ graph, selectedId, onSelect, onExpand, layoutOn, sigmaRef }) {
+// view (Web3 mode only): { hiddenKinds: Set, hiddenNodes: Set, minValue: number, onContext(node, x, y) }.
+// In Web3 mode hovering a node also lights up its neighbours, and right-click opens a menu.
+export default function SigmaGraph({ graph, selectedId, onSelect, onExpand, layoutOn, sigmaRef, view = null }) {
   const containerRef = useRef(null);
   const selectedRef = useRef(selectedId);
+  const hoveredRef = useRef("");
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const handlers = useRef({ onSelect, onExpand });
   handlers.current = { onSelect, onExpand };
 
@@ -38,15 +45,16 @@ export default function SigmaGraph({ graph, selectedId, onSelect, onExpand, layo
       zIndex: true,
       minCameraRatio: 0.02,
       maxCameraRatio: 20,
+      ...(WEB3_DESIGN ? W3_SIGMA_SETTINGS : {}),
       // Dim everything that is not the selected node or its neighbours.
-      nodeReducer: (node, data) => {
+      nodeReducer: WEB3_DESIGN ? (node, data) => w3NodeReducer(graph, node, data, hoveredRef.current || selectedRef.current, viewRef.current) : (node, data) => {
         const sel = selectedRef.current;
         if (!sel || !graph.hasNode(sel)) return data;
         if (node === sel) return { ...data, highlighted: true, zIndex: 2 };
         if (graph.areNeighbors(node, sel)) return { ...data, zIndex: 1 };
         return { ...data, color: FADED, label: "", zIndex: 0 };
       },
-      edgeReducer: (edge, data) => {
+      edgeReducer: WEB3_DESIGN ? (edge, data) => w3EdgeReducer(graph, edge, data, hoveredRef.current || selectedRef.current, viewRef.current) : (edge, data) => {
         const sel = selectedRef.current;
         if (!sel || !graph.hasNode(sel)) return data;
         return graph.hasExtremity(edge, sel) ? { ...data, size: Math.max(data.size ?? 1, 2), zIndex: 1 } : { ...data, hidden: true };
@@ -60,8 +68,22 @@ export default function SigmaGraph({ graph, selectedId, onSelect, onExpand, layo
       event.preventSigmaDefault(); // no zoom: double-click means "expand"
       handlers.current.onExpand(event.node);
     });
-    renderer.on("enterNode", () => { containerRef.current.style.cursor = "pointer"; });
-    renderer.on("leaveNode", () => { containerRef.current.style.cursor = ""; });
+    renderer.on("enterNode", ({ node }) => {
+      containerRef.current.style.cursor = "pointer";
+      if (WEB3_DESIGN) { hoveredRef.current = node; renderer.refresh({ skipIndexation: true }); }
+    });
+    renderer.on("leaveNode", () => {
+      containerRef.current.style.cursor = "";
+      if (WEB3_DESIGN) { hoveredRef.current = ""; renderer.refresh({ skipIndexation: true }); }
+    });
+    if (WEB3_DESIGN) {
+      renderer.on("rightClickNode", (event) => {
+        event.preventSigmaDefault();
+        event.event.original.preventDefault();
+        const box = containerRef.current.getBoundingClientRect();
+        viewRef.current?.onContext?.(event.node, box.left + event.event.x, box.top + event.event.y);
+      });
+    }
 
     return () => {
       renderer.kill();
@@ -69,11 +91,11 @@ export default function SigmaGraph({ graph, selectedId, onSelect, onExpand, layo
     };
   }, [graph, sigmaRef]);
 
-  // 2. Redraw when the selection changes (the reducers read it from the ref).
+  // 2. Redraw when the selection (or, in Web3 mode, a filter) changes; the reducers read them from refs.
   useEffect(() => {
     selectedRef.current = selectedId;
     sigmaRef.current?.refresh({ skipIndexation: true });
-  }, [selectedId, sigmaRef]);
+  }, [selectedId, sigmaRef, view?.hiddenKinds, view?.hiddenNodes, view?.minValue]);
 
   // 3. The background layout. Killed when switched off or when the graph object changes.
   useEffect(() => {
@@ -92,6 +114,7 @@ export default function SigmaGraph({ graph, selectedId, onSelect, onExpand, layo
       onKeyDown={(event) => {
         if (event.key === "Escape") onSelect("");
       }}
+      onContextMenu={WEB3_DESIGN ? (event) => event.preventDefault() : undefined}
     />
   );
 }
@@ -101,4 +124,31 @@ export function focusNode(renderer, node) {
   if (!renderer || !renderer.getGraph().hasNode(node)) return;
   const pos = renderer.getNodeDisplayData(node);
   if (pos) renderer.getCamera().animate({ x: pos.x, y: pos.y, ratio: 0.25 }, { duration: 400 });
+}
+
+// Web3 mode: hide filtered nodes; around the focused (hovered or selected) node, keep it and its neighbours bright.
+function nodeHidden(graph, node, view) {
+  if (!view) return false;
+  if (view.hiddenNodes?.has(node)) return true;
+  return view.hiddenKinds?.has(graph.getNodeAttribute(node, "styleKey")) ?? false;
+}
+
+function w3NodeReducer(graph, node, data, focus, view) {
+  if (nodeHidden(graph, node, view)) return { ...data, hidden: true };
+  const out = { ...data, color: W3_KIND_COLORS[data.styleKey] ?? data.color };
+  if (data.fixed) out.borderColor = "#fff";
+  if (!focus || !graph.hasNode(focus)) return out;
+  if (node === focus) return { ...out, highlighted: true, zIndex: 2, size: data.size * 1.25 };
+  if (graph.areNeighbors(node, focus)) return { ...out, zIndex: 1, forceLabel: graph.degree(focus) <= 30 };
+  return { ...out, color: W3_FADED, label: "", zIndex: 0 };
+}
+
+function w3EdgeReducer(graph, edge, data, focus, view) {
+  const [source, target] = graph.extremities(edge);
+  if (nodeHidden(graph, source, view) || nodeHidden(graph, target, view)) return { ...data, hidden: true };
+  if (view?.minValue > 0 && (data.value ?? 0) < view.minValue) return { ...data, hidden: true };
+  if (!focus || !graph.hasNode(focus)) return { ...data, color: W3_EDGE };
+  if (source === focus) return { ...data, color: W3_EDGE_OUT, size: Math.max(data.size ?? 1, 2), zIndex: 1 };
+  if (target === focus) return { ...data, color: W3_EDGE_IN, size: Math.max(data.size ?? 1, 2), zIndex: 1 };
+  return { ...data, hidden: true };
 }

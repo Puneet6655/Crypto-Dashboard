@@ -52,6 +52,11 @@ _utcnow, _int, _time, _text, _addr = utcnow, to_int, from_unix, plain_text, lowe
 
 class EtherscanProvider:
     name = "etherscan.io"
+    label = "Etherscan"  # used in error messages; the Blockscout subclass changes these
+    usage_key = "etherscan"
+    key_env = "ETHERSCAN_API_KEY"
+    chain_param = "chainid"
+    rate_text = "3 calls per second"
 
     def __init__(self, api_key: str, base_url: str = "https://api.etherscan.io/v2/api", chain_id: int = 1,
                  timeout_seconds: float = 10, transport: httpx.AsyncBaseTransport | None = None,
@@ -77,7 +82,7 @@ class EtherscanProvider:
 
     def public_url(self, params: dict) -> str:
         """The request URL without the API key: safe to save and show."""
-        return f"{self.base_url}?{urlencode({'chainid': self.chain_id, **params})}"
+        return f"{self.base_url}?{urlencode({self.chain_param: self.chain_id, **params})}"
 
     async def _wait_turn(self) -> None:
         now = time.monotonic()
@@ -90,7 +95,7 @@ class EtherscanProvider:
         """One API call. Returns (result, public URL). Raises ProviderError with a safe message."""
         wait = self._paused_until - time.monotonic()
         if wait > 0:
-            raise ProviderError(f"Etherscan's daily limit was reached; lookups resume in {wait / 60:.0f} minutes",
+            raise ProviderError(f"{self.label}'s daily limit was reached; lookups resume in {wait / 60:.0f} minutes",
                                 429, retry_after=wait)
         url = self.public_url(params)
         for attempt in range(2):
@@ -100,44 +105,44 @@ class EtherscanProvider:
             try:
                 result = await self._get(params)
             except ProviderError as exc:
-                meter.record("etherscan", kind, ok=exc.status_code == 404)
+                self._meter(kind, ok=exc.status_code == 404)
                 if exc.status_code == 429 and exc.retry_after is None and attempt == 0:
                     await asyncio.sleep(1.1)  # per-second limit: one more try after a pause
                     continue
                 self._failed(exc)
                 raise
-            meter.record("etherscan", kind)
+            self._meter(kind)
             if result is None and not allow_empty:
-                raise ProviderError("Etherscan has no record of that", 404)
+                raise ProviderError(f"{self.label} has no record of that", 404)
             self.answers += 1
             self.last_success_at = _utcnow()
             return result, url
         raise AssertionError("unreachable")
 
+    def _meter(self, kind: str, ok: bool = True) -> None:
+        meter.record(self.usage_key, kind, ok=ok)
+
     async def _get(self, params: dict) -> object:
-        query = {"chainid": self.chain_id, **params, "apikey": self._api_key}
+        query = {self.chain_param: self.chain_id, **params, "apikey": self._api_key}
         try:
             async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self._transport) as client:
                 response = await client.get(self.base_url, params=query, headers={"Accept": "application/json"})
         except httpx.TimeoutException:
-            raise ProviderError(f"Etherscan did not answer within {self.timeout_seconds} seconds", 504)
+            raise ProviderError(f"{self.label} did not answer within {self.timeout_seconds} seconds", 504)
         except httpx.HTTPError as exc:
-            raise ProviderError(f"Could not reach Etherscan: {exc.__class__.__name__}", 502)
-        if response.status_code == 429:
-            raise ProviderError("Etherscan rate limit reached", 429)
-        if response.status_code >= 400:
-            raise ProviderError(f"Etherscan returned HTTP {response.status_code}", 502)
+            raise ProviderError(f"Could not reach {self.label}: {exc.__class__.__name__}", 502)
+        self._check_status(response)
         try:
             body = response.json()
         except ValueError:
-            raise ProviderError("Etherscan returned a response that is not JSON", 502)
+            raise ProviderError(f"{self.label} returned a response that is not JSON", 502)
         if not isinstance(body, dict):
-            raise ProviderError("Etherscan returned an unexpected response", 502)
+            raise ProviderError(f"{self.label} returned an unexpected response", 502)
 
         # Proxy (JSON-RPC) calls: {"jsonrpc", "result"} or {"error": {...}}.
         if "jsonrpc" in body:
             if body.get("error"):
-                raise ProviderError(f"Etherscan node error: {str(body['error'].get('message', ''))[:200]}", 502)
+                raise ProviderError(f"{self.label} node error: {str(body['error'].get('message', ''))[:200]}", 502)
             return body.get("result")
 
         # Account calls: {"status": "1"|"0", "message", "result"}. HTTP 200 can still be an error.
@@ -150,13 +155,19 @@ class EtherscanProvider:
             return []
         if "rate limit" in text:
             if "daily" in text or "day" in text:
-                raise ProviderError("Etherscan's daily limit was reached", 429, retry_after=DAILY_LIMIT_PAUSE_SECONDS)
-            raise ProviderError("Etherscan rate limit reached (3 calls per second)", 429)
+                raise ProviderError(f"{self.label}'s daily limit was reached", 429, retry_after=DAILY_LIMIT_PAUSE_SECONDS)
+            raise ProviderError(f"{self.label} rate limit reached ({self.rate_text})", 429)
         if "api key" in text or "apikey" in text:
-            raise ProviderError("Etherscan rejected the API key (check ETHERSCAN_API_KEY in backend/.env)", 502)
+            raise ProviderError(f"{self.label} rejected the API key (check {self.key_env} in backend/.env)", 502)
         if "invalid" in text:
-            raise ProviderError(f"Etherscan rejected the request: {str(detail)[:200]}", 404)
-        raise ProviderError(f"Etherscan returned an error: {message} {str(detail)[:200]}".strip(), 502)
+            raise ProviderError(f"{self.label} rejected the request: {str(detail)[:200]}", 404)
+        raise ProviderError(f"{self.label} returned an error: {message} {str(detail)[:200]}".strip(), 502)
+
+    def _check_status(self, response: httpx.Response) -> None:
+        if response.status_code == 429:
+            raise ProviderError(f"{self.label} rate limit reached", 429)
+        if response.status_code >= 400:
+            raise ProviderError(f"{self.label} returned HTTP {response.status_code}", 502)
 
     def _failed(self, exc: ProviderError) -> None:
         if exc.status_code == 404:
@@ -210,7 +221,7 @@ class EtherscanProvider:
         async def fetch():
             rows, url = await self._call(params, allow_empty=True)
             if not isinstance(rows, list):
-                raise ProviderError(f"Etherscan returned an unexpected {action} list", 502)
+                raise ProviderError(f"{self.label} returned an unexpected {action} list", 502)
             provenance = self._provenance(url)
             return [convert(row, provenance) for row in rows]
 
@@ -259,7 +270,7 @@ class EtherscanProvider:
             rows, _ = await self._call({"module": "account", "action": "txlistinternal", "txhash": tx_hash},
                                        allow_empty=True)
             if not isinstance(rows, list):
-                raise ProviderError("Etherscan returned an unexpected internal transfer list", 502)
+                raise ProviderError(f"{self.label} returned an unexpected internal transfer list", 502)
             return [EthInternalTransfer(
                 tx_hash=tx_hash, block_number=_int(row.get("blockNumber")), block_time=_time(_int(row.get("timeStamp"))),
                 from_address=row["from"].lower(), to_address=_addr(row.get("to")) or None,

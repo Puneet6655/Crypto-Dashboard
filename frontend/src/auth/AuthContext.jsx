@@ -59,14 +59,30 @@ export function AuthProvider({ children }) {
     return result.user;
   }, []);
 
-  const signUp = useCallback(async (email, displayName, password) => {
+  // extras: { date_of_birth, user_type, organisation, accept_terms } from legal/SignupExtras.jsx
+  const signUp = useCallback(async (email, displayName, password, extras = {}) => {
     const result = await apiFetch("/api/auth/signup", {
       method: "POST",
-      body: { email, display_name: displayName, password },
+      body: { email, display_name: displayName, password, ...extras },
     });
     setToken(result.token);
     setUser(result.user);
     return result.user;
+  }, []);
+
+  // Age, user type and consent for accounts that still owe them (user.needs is not empty).
+  const completeProfile = useCallback(async (body) => {
+    const updated = await apiFetch("/api/auth/profile", { method: "POST", body });
+    setUser(updated);
+    return updated;
+  }, []);
+
+  // Deletes the account and all its data on the server, then forgets the session here.
+  const deleteAccount = useCallback(async (password, confirm) => {
+    const result = await apiFetch("/api/auth/delete-account", { method: "POST", body: { password, confirm } });
+    setToken("");
+    setUser(null);
+    return result;
   }, []);
 
   const signOut = useCallback(async () => {
@@ -82,8 +98,8 @@ export function AuthProvider({ children }) {
   const value = useMemo(() => {
     const signedIn = Boolean(user && user.id !== null);
     const can = (role) => signedIn && (ROLE_RANK[user.role] ?? -1) >= ROLE_RANK[role];
-    return { user, config, state, offlineReason, signedIn, can, check, signIn, signUp, signOut };
-  }, [user, config, state, offlineReason, check, signIn, signUp, signOut]);
+    return { user, config, state, offlineReason, signedIn, can, check, signIn, signUp, signOut, completeProfile, deleteAccount };
+  }, [user, config, state, offlineReason, check, signIn, signUp, signOut, completeProfile, deleteAccount]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

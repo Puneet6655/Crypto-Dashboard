@@ -1,0 +1,24 @@
+/* Styles for the particle logo preview page only. Every class starts with pl-
+   so nothing here can affect the dashboard. */
+.pl-page {
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 40%, #16213d 0%, #0d1424 60%, #080d18 100%);
+  color: #c5cde0;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+.pl-stage { display: flex; flex-direction: column; align-items: center; gap: 20px; text-align: center; }
+.pl-canvas { display: block; max-width: 100%; height: auto !important; }
+.pl-title { margin: 0; font-size: 22px; font-weight: 600; color: #eef2ff; letter-spacing: 0.01em; }
+.pl-sub { margin: 0; font-size: 14px; color: #7f8aa3; }
+.pl-controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.pl-btn {
+  font: inherit; font-size: 13px; padding: 8px 16px; border-radius: 999px; cursor: pointer;
+  background: rgba(122, 162, 255, 0.12); color: #c7d2fe; border: 1px solid rgba(122, 162, 255, 0.35);
+}
+.pl-btn:hover { background: rgba(122, 162, 255, 0.22); }
+.pl-btn[aria-pressed="true"] { background: #4b6bd6; color: #fff; border-color: #4b6bd6; }

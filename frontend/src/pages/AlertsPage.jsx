@@ -4,6 +4,8 @@ import Icon from "../components/Icon.jsx";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { useToast } from "../components/Toasts.jsx";
+import { WEB3_DESIGN } from "../config/w3Design.js";
+import W3AlertsView from "../w3/W3AlertsView.jsx";
 
 const short = (a) => (a ? `${a.slice(0, 8)}…${a.slice(-6)}` : "contract creation");
 
@@ -13,6 +15,11 @@ const CHAINS = {
     label: "Ethereum", placeholder: "0x followed by 40 hexadecimal characters",
     explorer: (tx) => `https://etherscan.io/tx/${tx}`, investigate: "ethereum_txid",
     how: "Alchemy WebSocket, filtered to watched addresses",
+  },
+  base: {
+    label: "Base", placeholder: "0x followed by 40 hexadecimal characters",
+    explorer: (tx) => `https://basescan.org/tx/${tx}`, investigate: "base_txid",
+    how: "Alchemy, each address checked in turn (at most one check every 3 minutes)",
   },
   solana: {
     label: "Solana", placeholder: "32 to 44 base58 characters",
@@ -43,6 +50,7 @@ export function addressProblem(chain, raw) {
   const value = raw.trim();
   if (!value) return "Enter an address.";
   if (chain === "ethereum") return /^0x[0-9a-fA-F]{40}$/.test(value) ? null : "An Ethereum address is 0x followed by 40 hexadecimal characters.";
+  if (chain === "base") return /^0x[0-9a-fA-F]{40}$/.test(value) ? null : "A Base address is 0x followed by 40 hexadecimal characters.";
   if (chain === "solana") {
     return value.length >= 32 && value.length <= 44 && base58Bytes(value) === 32
       ? null : "A Solana address is 32 to 44 base58 characters (no 0, O, I or l) that decode to 32 bytes.";
@@ -54,15 +62,26 @@ export function addressProblem(chain, raw) {
   return "Choose a chain.";
 }
 
-// Live alerts: new transactions by watched addresses on Ethereum, Solana and Bitcoin.
+// Live alerts: new transactions by watched addresses on Ethereum, Base, Solana and Bitcoin.
 export default function AlertsPage({ live, onInvestigate }) {
   const { alerts, status, statuses, markSeen, reload } = live;
   useEffect(() => markSeen(), [alerts.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Web3 mode: monitored wallets on the left, click one to see its transactions (w3/W3AlertsView.jsx).
+  if (WEB3_DESIGN) {
+    return (
+      <W3AlertsView live={live} onInvestigate={onInvestigate} ManageWatchlist={Watchlist}
+        statusCards={<>
+          <WatcherStatus status={status} />
+          {statuses && ["base", "solana", "bitcoin"].map((chain) => <PollerStatus key={chain} chain={chain} status={statuses[chain]} />)}
+        </>} />
+    );
+  }
+
   return (
     <>
       <PageHeader icon="bell" title="Live alerts"
-        subtitle="New transactions by watched addresses (your watchlist, open cases, the OFAC list) on Ethereum, Solana and Bitcoin.">
+        subtitle="New transactions by watched addresses (your watchlist, open cases, the OFAC list) on Ethereum, Base, Solana and Bitcoin.">
         <button type="button" className="secondary" onClick={reload}>
           <Icon name="refresh" size={16} /> Check now
         </button>
@@ -71,7 +90,7 @@ export default function AlertsPage({ live, onInvestigate }) {
       <Watchlist onChange={reload} />
 
       <WatcherStatus status={status} />
-      {statuses && ["solana", "bitcoin"].map((chain) => <PollerStatus key={chain} chain={chain} status={statuses[chain]} />)}
+      {statuses && ["base", "solana", "bitcoin"].map((chain) => <PollerStatus key={chain} chain={chain} status={statuses[chain]} />)}
 
       <section className="card">
         <div className="section-head"><h2>Alerts ({alerts.length})</h2></div>
@@ -94,7 +113,7 @@ export default function AlertsPage({ live, onInvestigate }) {
                   return (
                     <tr key={a.id} className={a.sanctioned ? "alert-row-sanctioned" : ""}>
                       <td title={formatDate(a.at, true)}>{timeAgo(a.at)}</td>
-                      <td className="small">{chain.label}</td>
+                      <td className="small">{chain.label}{a.kind === "x402" && <span className="pill pill-warn">x402</span>}</td>
                       <td className="mono small" title={watched?.address}>{short(watched?.address)}</td>
                       <td className="small">
                         {watched?.reasons.map((r) => (
@@ -116,7 +135,7 @@ export default function AlertsPage({ live, onInvestigate }) {
                       </td>
                       <td>
                         <button type="button" className="secondary small-button"
-                          onClick={() => onInvestigate(chain.investigate, a.tx_hash)}>Investigate</button>
+                          onClick={() => (a.kind === "x402" ? onInvestigate("base_txid", a.tx_hash, "x402", "x402_rules") : onInvestigate(chain.investigate, a.tx_hash))}>Investigate</button>
                       </td>
                     </tr>
                   );

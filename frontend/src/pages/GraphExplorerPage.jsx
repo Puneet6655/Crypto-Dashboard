@@ -5,6 +5,9 @@ import SigmaGraph, { focusNode } from "../components/SigmaGraph.jsx";
 import { streamGraphExpand } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { navigate } from "../hooks/useHashRoute.js";
+import { WEB3_DESIGN } from "../config/w3Design.js";
+import HoldingsPanel from "../components/HoldingsPanel.jsx";
+import { W3FlowOverlay, W3GraphFilters, W3GraphSearch, W3NodeMenu, minValueAt } from "../w3/W3GraphTools.jsx";
 
 // Advanced graph mode: grow a graph of thousands of addresses step by step.
 // Load 1 or 2 hops around an address, then double-click any node to expand it. Busy addresses
@@ -121,6 +124,7 @@ export default function GraphExplorerPage({ route }) {
   const [counts, setCounts] = useState({ nodes: 0, edges: 0 });
   const [selectedId, setSelectedId] = useState("");
   const [selectedVersion, setSelectedVersion] = useState(0);
+  const [holdingsFor, setHoldingsFor] = useState(""); // Web3: node whose live holdings were asked for
   const [running, setRunning] = useState(null); // { label, done, total } while a request streams
   const [messages, setMessages] = useState([]);
   const [lastRun, setLastRun] = useState(null);
@@ -130,6 +134,16 @@ export default function GraphExplorerPage({ route }) {
   const abortRef = useRef(null);
   const layoutTimer = useRef(null);
   const countFrame = useRef(0);
+  // Web3 mode extras: filters, hidden nodes, right-click menu, money-flow particles.
+  const [hiddenKinds, setHiddenKinds] = useState(() => new Set());
+  const [hiddenNodes, setHiddenNodes] = useState(() => new Set());
+  const [minIndex, setMinIndex] = useState(0);
+  const [menu, setMenu] = useState(null); // { node, x, y }
+  const [flowOn, setFlowOn] = useState(true);
+  const view = useMemo(() => (WEB3_DESIGN ? {
+    hiddenKinds, hiddenNodes, minValue: minValueAt(minIndex),
+    onContext: (node, x, y) => { setSelectedId(node); setMenu({ node, x, y }); },
+  } : null), [hiddenKinds, hiddenNodes, minIndex]);
 
   const maxCap = status.data?.max_nodes ?? 20000;
   const unit = CHAINS.find((c) => c.id === graphChain)?.unit ?? "";
@@ -216,6 +230,8 @@ export default function GraphExplorerPage({ route }) {
     event?.preventDefault();
     const value = address.trim();
     if (!value) return;
+    // Several addresses (comma or space separated) start one graph together, e.g. a case's addresses.
+    const starts = value.split(/[\s,]+/).filter(Boolean);
     abortRef.current?.abort();
     const fresh = new Graph({ type: "directed" });
     graphRef.current = fresh;
@@ -227,13 +243,16 @@ export default function GraphExplorerPage({ route }) {
     setCounts({ nodes: 0, edges: 0 });
     // Remember the start in the address bar, so a reload or a shared link opens the same graph.
     navigate(`/graph/${chain}/${encodeURIComponent(value)}`);
-    expand([value], hops, `Loading ${hops} hop${hops > 1 ? "s" : ""}`, fresh, chain).then(() => {
-      const seedId = [...fresh.nodes()].find((id) => fresh.getNodeAttribute(id, "address")?.toLowerCase() === value.toLowerCase());
-      if (seedId) {
+    if (WEB3_DESIGN) { setHiddenNodes(new Set()); setMenu(null); }
+    expand(starts, hops, `Loading ${hops} hop${hops > 1 ? "s" : ""}${starts.length > 1 ? ` around ${starts.length} addresses` : ""}`, fresh, chain).then(() => {
+      const wanted = new Set(starts.map((v) => v.toLowerCase()));
+      const seedIds = [...fresh.nodes()].filter((id) => wanted.has(fresh.getNodeAttribute(id, "address")?.toLowerCase()));
+      for (const seedId of seedIds) {
         fresh.mergeNodeAttributes(seedId, { seed: true });
         fresh.replaceNodeAttributes(seedId, drawAttrs(fresh.getNodeAttributes(seedId)));
-        setSelectedId(seedId);
       }
+      if (seedIds.length === 1) setSelectedId(seedIds[0]);
+      if (seedIds.length) recount();
     });
   }
 
@@ -369,7 +388,7 @@ export default function GraphExplorerPage({ route }) {
             </select>
           </label>
           <label className="field">
-            <span className="field-label">Starting address</span>
+            <span className="field-label">Starting address{WEB3_DESIGN ? " (or several, comma separated)" : ""}</span>
             <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={CHAINS.find((c) => c.id === chain)?.placeholder} spellCheck={false} />
           </label>
           <div className="field-row">
@@ -400,7 +419,7 @@ export default function GraphExplorerPage({ route }) {
           </div>
           <p className="small muted">
             {chain === "bitcoin" && "Bitcoin comes from mempool.space (blockstream.info as backup): free, at most 60 addresses per request."}
-            {chain === "ethereum" && "Ethereum comes from Etherscan first (free key); Alchemy is the backup. At most 40 addresses per request."}
+            {chain === "ethereum" && "Ethereum comes from Etherscan first (free key); Blockscout and Alchemy are the backups. At most 40 addresses per request."}
             {chain === "base" && "Base comes from Alchemy only: about 480 compute units per address, at most 15 per request."}
             {chain === "solana" && "Solana comes from Alchemy only: about 640 compute units per address, at most 8 per request."}
           </p>
@@ -425,16 +444,24 @@ export default function GraphExplorerPage({ route }) {
           )}
 
           <div className="graph-toolbar">
-            <form className="grow explorer-search" onSubmit={find}>
-              <input type="search" className="graph-search" placeholder="Find an address in the graph" value={search}
-                onChange={(e) => setSearch(e.target.value)} aria-label="Find an address" />
-            </form>
+            {WEB3_DESIGN ? (
+              <W3GraphSearch graph={graph} version={counts.nodes} onPick={(id) => { setSelectedId(id); focusNode(sigmaRef.current, id); }} />
+            ) : (
+              <form className="grow explorer-search" onSubmit={find}>
+                <input type="search" className="graph-search" placeholder="Find an address in the graph" value={search}
+                  onChange={(e) => setSearch(e.target.value)} aria-label="Find an address" />
+              </form>
+            )}
             <div className="button-group">
               <button type="button" className="secondary" onClick={expandFrontier} disabled={!counts.nodes || Boolean(running) || atCap}
                 title="Expand every address not expanded yet (up to the per-request limit)">Expand all</button>
               <button type="button" className="secondary" onClick={() => sigmaRef.current?.getCamera().animatedReset()} disabled={!counts.nodes}>Fit</button>
               <button type="button" className="secondary" onClick={() => { setLayoutPinned(layoutOn); setLayoutOn(!layoutOn); }} disabled={!counts.nodes}
                 title="ForceAtlas2 runs in a background thread">{layoutOn ? "Pause layout" : "Run layout"}</button>
+              {WEB3_DESIGN && (
+                <button type="button" className={`secondary ${flowOn ? "w3-on" : ""}`} onClick={() => setFlowOn((f) => !f)} disabled={!counts.nodes}
+                  aria-pressed={flowOn} title="Moving dots show which way money flows along each link">Money flow</button>
+              )}
               <button type="button" className="secondary" onClick={downloadJson} disabled={!counts.nodes} title="Download the graph (graphology JSON)">JSON</button>
               <button type="button" className="secondary" onClick={clear} disabled={!counts.nodes}>Clear</button>
             </div>
@@ -455,32 +482,56 @@ export default function GraphExplorerPage({ route }) {
               <div className="sigma-empty muted">Enter an address and press Load graph.</div>
             )}
             <SigmaGraph graph={graph} selectedId={selectedId} onSelect={setSelectedId}
-              onExpand={(id) => expandNode(id)} layoutOn={layoutOn} sigmaRef={sigmaRef} />
+              onExpand={(id) => expandNode(id)} layoutOn={layoutOn} sigmaRef={sigmaRef} view={view} />
+            {WEB3_DESIGN && <W3FlowOverlay sigmaRef={sigmaRef} graph={graph} focusId={selectedId} view={view} on={flowOn && counts.nodes > 0} />}
           </div>
+          {WEB3_DESIGN && (
+            <W3NodeMenu menu={menu} graph={graph} chain={graphChain} onClose={() => setMenu(null)}
+              onExpand={expandNode}
+              onSelectFocus={(id) => { setSelectedId(id); focusNode(sigmaRef.current, id); }}
+              onHide={(id) => { setHiddenNodes((old) => new Set(old).add(id)); if (selectedId === id) setSelectedId(""); }}
+              onTogglePin={(id) => { graph.setNodeAttribute(id, "fixed", !graph.getNodeAttribute(id, "fixed")); recount(); }} />
+          )}
 
-          <div className="legend" aria-label="Legend">
-            {Object.entries(KIND_STYLE).filter(([key]) => kindCounts[key]).map(([key, s]) => (
-              <span key={key} className="chip">
-                <span className="swatch" style={{ background: s.color }} />
-                {s.label} ({kindCounts[key].toLocaleString()})
-              </span>
-            ))}
-          </div>
+          {WEB3_DESIGN ? (
+            <W3GraphFilters kinds={KIND_STYLE} counts={kindCounts} hiddenKinds={hiddenKinds} unit={unit}
+              onToggleKind={(key) => setHiddenKinds((old) => { const next = new Set(old); next.has(key) ? next.delete(key) : next.add(key); return next; })}
+              minIndex={minIndex} onMinIndex={setMinIndex} hiddenNodes={hiddenNodes} onShowHidden={() => setHiddenNodes(new Set())} />
+          ) : (
+            <div className="legend" aria-label="Legend">
+              {Object.entries(KIND_STYLE).filter(([key]) => kindCounts[key]).map(([key, s]) => (
+                <span key={key} className="chip">
+                  <span className="swatch" style={{ background: s.color }} />
+                  {s.label} ({kindCounts[key].toLocaleString()})
+                </span>
+              ))}
+            </div>
+          )}
           <p className="small muted hint">
             Scroll to zoom, drag to pan. Click a node for details, double-click to expand it (or open a group).
+            {WEB3_DESIGN && " Hover a node to light up its links, right-click it for more actions."}
             {lastRun && ` Last request: ${lastRun.fetched} fetched, ${lastRun.from_cache} from cache, ${lastRun.seconds} s` +
               (lastRun.alchemy_cu ? `, ${lastRun.alchemy_cu.toLocaleString()} Alchemy CU.` : ".")}
           </p>
         </section>
 
         <NodeDetails key={selectedId + selectedVersion} graph={graph} id={selectedId} unit={unit} running={Boolean(running)} atCap={atCap} labelCount={status.data?.exchange_labels?.addresses ?? 0}
-          onExpand={expandNode} onSelect={(id) => { setSelectedId(id); focusNode(sigmaRef.current, id); }} />
+          onExpand={expandNode} onSelect={(id) => { setSelectedId(id); focusNode(sigmaRef.current, id); }}
+          chain={graphChain} holdingsOpen={holdingsFor === selectedId} onHoldings={() => setHoldingsFor(selectedId)} />
       </div>
     </>
   );
 }
 
-function NodeDetails({ graph, id, unit, running, atCap, onExpand, onSelect, labelCount }) {
+// Holdings node id in the form HoldingsPanel expects (EVM hex lower case). Bitcoin has no holdings view.
+function holdingsNodeId(chain, address) {
+  if (!address) return "";
+  if (chain === "ethereum" || chain === "base") return /^0x[0-9a-fA-F]{40}$/.test(address) ? `${chain}:mainnet:address:${address.toLowerCase()}` : "";
+  if (chain === "solana") return `solana:mainnet:address:${address}`;
+  return "";
+}
+
+function NodeDetails({ graph, id, unit, running, atCap, onExpand, onSelect, labelCount, chain, holdingsOpen, onHoldings }) {
   if (!id || !graph.hasNode(id)) {
     return (
       <aside className="card details">
@@ -551,6 +602,16 @@ function NodeDetails({ graph, id, unit, running, atCap, onExpand, onSelect, labe
             <button type="button" className="secondary" disabled={running || atCap} onClick={() => onExpand(id, 2)}>2 hops</button>
           </div>
           <p className="small muted">Amounts are only what the loaded history shows between these addresses, not their full balances.</p>
+          {WEB3_DESIGN && holdingsNodeId(chain, a.address) && (
+            <div className="w3-holdings">
+              {holdingsOpen ? <HoldingsPanel nodeId={holdingsNodeId(chain, a.address)} /> : (
+                <>
+                  <button type="button" className="secondary" onClick={onHoldings}>Load wallet holdings (tokens, then NFTs)</button>
+                  <p className="small muted">Live balances from Alchemy. Uses compute units, so they load only when asked.</p>
+                </>
+              )}
+            </div>
+          )}
         </>
       )}
     </aside>
