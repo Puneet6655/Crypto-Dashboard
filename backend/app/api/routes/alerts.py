@@ -26,6 +26,7 @@ OFF = ("Live alerts are off. They need ALCHEMY_API_KEY and ALCHEMY_ENABLED=true 
        "(and LIVE_ALERTS_ENABLED not set to false).")
 OFF_BY_CHAIN = {
     "ethereum": OFF,
+    "base": "Base alerts need ALCHEMY_API_KEY and ALCHEMY_ENABLED=true in backend/.env.",
     "solana": "Solana alerts need ALCHEMY_API_KEY and ALCHEMY_ENABLED=true in backend/.env.",
     "bitcoin": "Bitcoin alerts are off (LIVE_ALERTS_ENABLED is false).",
 }
@@ -52,7 +53,7 @@ def alerts(after_id: int = Query(0, ge=0, description="Only alerts newer than th
 
 
 class WatchIn(BaseModel):
-    chain: Literal["ethereum", "solana", "bitcoin"]
+    chain: Literal["ethereum", "base", "solana", "bitcoin"]
     address: str = Field(min_length=1, max_length=120)
     label: str | None = Field(None, max_length=100)
 

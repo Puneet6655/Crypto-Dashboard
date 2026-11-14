@@ -1,12 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import GraphCanvas from "./GraphCanvas.jsx";
 import { LAYOUTS, NODE_TYPES, RELATIONS, nodeTypeInfo, relationInfo } from "../config/graphStyle.js";
+import { WEB3_DESIGN } from "../config/w3Design.js";
+import W3Scanner, { W3Idle } from "../w3/W3Scanner.jsx";
 
 // Centre column. Shows the idle, loading, error, cancelled and empty states,
 // or the interactive graph once a result has arrived.
 export default function GraphView({ status, error, result, selectedId, onSelect, onCancel, startedAt, methodLabel }) {
   if (status === "idle") {
-    return <section className="card graph state">Choose a mode and a case, then press Start Investigation.</section>;
+    return (
+      <section className="card graph state">
+        {WEB3_DESIGN && <W3Idle />}
+        {WEB3_DESIGN ? "Paste an address, transaction or website on the left, then press Investigate." : "Choose a mode and a case, then press Start Investigation."}
+      </section>
+    );
   }
   if (status === "loading") {
     return <LoadingState startedAt={startedAt} methodLabel={methodLabel} onCancel={onCancel} />;
@@ -44,7 +51,7 @@ function LoadingState({ startedAt, methodLabel, onCancel }) {
   return (
     <section className="card graph state" role="status" aria-live="polite">
       <div className="loading">
-        <div className="spinner" aria-hidden="true" />
+        {WEB3_DESIGN ? <W3Scanner /> : <div className="spinner" aria-hidden="true" />}
         <div>Running {methodLabel}...</div>
         <div className="small muted">{seconds.toFixed(1)} s</div>
         {seconds > 5 && <div className="small muted">Live lookups can take a while when mempool.space is busy.</div>}

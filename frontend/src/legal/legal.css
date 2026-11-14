@@ -1,0 +1,47 @@
+/* Legal pages, sign-up consent, storage notice and footer. Uses the theme variables, so it follows both the
+   classic design (styles/app.css) and the Web3 design (html.w3 in w3/w3-shell.css). */
+
+.legal-card { max-width: 860px; }
+.legal-text h2 { margin: 0 0 4px; }
+.legal-text h3 { margin: 24px 0 6px; font-size: 16px; }
+.legal-text p, .legal-text li { line-height: 1.6; }
+.legal-text ul { padding-left: 20px; margin: 6px 0; }
+.legal-text li { margin: 4px 0; }
+
+.legal-standalone { min-height: 100vh; background: var(--bg); color: var(--text); padding: 24px 16px; box-sizing: border-box; }
+.legal-standalone-inner { max-width: 900px; margin: 0 auto; display: grid; gap: 16px; }
+.legal-standalone-head { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
+.legal-standalone-head .brand-name { font-weight: 700; font-size: 18px; color: var(--text); }
+
+.complete-profile { max-width: 460px; margin: 6vh auto 0; }
+.complete-profile h1 { margin: 0; font-size: 22px; }
+
+.consent-check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.consent-check input { width: auto; margin-top: 3px; flex: none; }
+.consent-check a, .legal-login-links a { color: var(--accent); }
+.w3-login-card .consent-check { color: var(--l-muted, var(--muted)); }
+.w3-login-card select { background: rgba(255, 255, 255, 0.05); border-color: var(--l-line, var(--border-strong)); color: #fff; }
+.w3-login-card select option { color: #141a26; }
+.legal-login-links { margin: 0; }
+
+.storage-notice {
+  position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 60; margin: 0 auto; max-width: 720px;
+  display: flex; gap: 12px; align-items: center; padding: 12px 16px; border-radius: var(--radius);
+  background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px);
+}
+.storage-notice p { margin: 0; font-size: 13px; line-height: 1.5; flex: 1; }
+.storage-notice a { color: var(--accent); }
+@media (max-width: 560px) { .storage-notice { flex-direction: column; align-items: stretch; } }
+
+.legal-footer { margin-top: 32px; padding: 16px 0 8px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); display: grid; gap: 4px; }
+.legal-footer p { margin: 0; }
+.legal-footer a { color: var(--muted); text-decoration: underline; }
+.legal-footer a:hover { color: var(--accent); }
+
+.your-data { margin-top: 16px; }
+.legal-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 12px; font-size: 14px; }
+.legal-facts dt { color: var(--muted); }
+.legal-facts dd { margin: 0; }
+.danger-zone { border-color: var(--danger-soft); }
+.danger-zone h2 { color: var(--danger); }

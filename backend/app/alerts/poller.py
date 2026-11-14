@@ -1,5 +1,8 @@
 """Live alerts for Solana and Bitcoin: check each watched address for new transactions, round after round.
 
+Base goes through Alchemy too (two alchemy_getAssetTransfers calls, 240 CU a check; Alchemy's filtered
+WebSocket for mined transactions is not offered on Base). Checks are at least 3 minutes apart, so Base also
+stays under about 3.5 million CU a month whatever the list size.
 Solana goes through Alchemy (getSignaturesForAddress, 40 CU a call). Calls are spaced so there is at most one
 every 30 seconds, and a round over all addresses takes at least 5 minutes: about 86,000 calls and 3.5 million
 CU a month at most, whatever the list size (the free plan has 30 million). Bitcoin goes through mempool.space
@@ -23,6 +26,7 @@ log = logging.getLogger("app.alerts")
 
 MAX_NEW_PER_CHECK = 10  # a burst on one address gives at most this many alerts per check
 SOLANA_CU_PER_CALL = 40
+BASE_CU_PER_CHECK = 240  # two alchemy_getAssetTransfers calls (sent by, received by)
 
 
 def _now() -> datetime:
@@ -47,6 +51,8 @@ class ChainPolling:
 
 
 SOLANA = ChainPolling("solana", "Alchemy (getSignaturesForAddress)", "SOL", 20, 300.0, 30.0, SOLANA_CU_PER_CALL)
+BASE = ChainPolling("base", "Alchemy (alchemy_getAssetTransfers, sent and received)", "ETH", 20, 300.0, 180.0,
+                    BASE_CU_PER_CHECK)
 BITCOIN = ChainPolling("bitcoin", "mempool.space (blockstream.info as backup)", "BTC", 50, 120.0, 3.0)
 
 
@@ -116,7 +122,7 @@ class PollingWatcher:
             alert = {
                 "id": next_alert_id(), "at": _now(), "chain": self.config.chain, "tx_hash": row["tx"],
                 "block_number": row.get("block"), "direction": row.get("direction"),
-                "amount": row.get("amount"), "unit": self.config.unit, "counterparty": row.get("counterparty"),
+                "amount": row.get("amount"), "unit": row.get("unit") or self.config.unit, "counterparty": row.get("counterparty"),
                 "watched": [{"address": address, "reasons": self.watchlist.get(address, [])}],
                 "sanctioned": any("OFAC" in r for r in self.watchlist.get(address, [])),
                 "removed": False, "failed": bool(row.get("failed")),
@@ -214,5 +220,47 @@ def bitcoin_rows(address: str, transactions) -> list[Seen]:
 def bitcoin_fetch(provider):
     async def fetch(address: str) -> list[Seen]:
         return bitcoin_rows(address, await provider.get_address_transactions(address))
+
+    return fetch
+
+
+def _amount(value) -> str | None:
+    try:
+        return f"{float(value):.6f}".rstrip("0").rstrip(".") or "0"
+    except (TypeError, ValueError):
+        return None
+
+
+def base_rows(address: str, transfers: list[dict]) -> list[Seen]:
+    """Alchemy asset transfers (newest first) -> one row per transaction. A transaction with several transfers
+    is shown by its ETH transfer if it has one, otherwise by its first token transfer."""
+    address = address.lower()
+    by_hash: dict[str, dict] = {}
+    order: list[str] = []
+    for t in transfers:
+        tx = (t.get("hash") or "").lower()
+        if not tx:
+            continue
+        if tx not in by_hash:
+            order.append(tx)
+            by_hash[tx] = t
+        elif by_hash[tx].get("category") == "erc20" and t.get("category") in ("external", "internal"):
+            by_hash[tx] = t
+    rows = []
+    for tx in order:
+        t = by_hash[tx]
+        sender, receiver = (t.get("from") or "").lower(), (t.get("to") or "").lower() or None
+        out = sender == address
+        block = t.get("blockNum")
+        rows.append({"tx": tx, "block": int(block, 16) if isinstance(block, str) and block.startswith("0x") else None,
+                     "failed": False, "direction": "out" if out else "in", "amount": _amount(t.get("value")),
+                     "unit": (t.get("asset") or "ETH")[:12], "counterparty": receiver if out else sender or None})
+    return rows
+
+
+def base_fetch(provider):
+    """provider: the AlchemyProvider for Base."""
+    async def fetch(address: str) -> list[Seen]:
+        return base_rows(address, await provider.recent_transfers(address))
 
     return fetch

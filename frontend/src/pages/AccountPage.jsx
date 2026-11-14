@@ -4,6 +4,7 @@ import { ROLE_LABELS, useAuth } from "../auth/AuthContext.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import Icon from "../components/Icon.jsx";
 import { useToast } from "../components/Toasts.jsx";
+import YourData from "../legal/YourData.jsx";
 
 const ROLE_HELP = {
   viewer: "You can use every page of the dashboard. Ask an admin if you need to build cases.",
@@ -71,6 +72,7 @@ export default function AccountPage() {
           </form>
         )}
       </div>
+      <YourData />
     </>
   );
 }

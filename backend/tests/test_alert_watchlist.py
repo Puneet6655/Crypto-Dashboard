@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.alerts import manual
 from app.alerts import watcher as watcher_module
-from app.alerts.poller import BITCOIN, SOLANA, PollingWatcher, bitcoin_rows
+from app.alerts.poller import BASE, BITCOIN, SOLANA, PollingWatcher, base_rows, bitcoin_rows
 from app.alerts.watcher import AlertWatcher, limit_watchlist
 from app.main import app
 
@@ -25,6 +25,9 @@ def test_addresses_are_checked_for_the_chosen_chain():
     assert manual.clean("solana", SOL.lower())[1]  # base58 is case-sensitive: this no longer decodes to 32 bytes
     assert manual.clean("ethereum", "")[1] == "Enter an address."
     assert manual.clean("dogecoin", ETH)[1]
+    # Base uses Ethereum-format addresses.
+    assert manual.clean("base", f" {ETH} ") == (ETH.lower(), None)
+    assert manual.clean("base", SOL)[1] == "A Base address is 0x followed by 40 hexadecimal characters."
 
 
 def test_watchlist_addresses_are_kept_before_ofac_ones():
@@ -134,3 +137,28 @@ def test_nudge_reloads_the_ethereum_list_without_waiting():
 def test_watchlist_routes_need_the_database():
     client = TestClient(app)
     assert client.get("/api/alerts/watchlist").status_code in (401, 503)
+
+
+def test_base_rows_pick_eth_over_tokens_and_give_direction_and_unit():
+    me, other = ETH.lower(), "0x" + "cd" * 20
+    transfers = [  # newest first, as recent_transfers gives them
+        {"hash": "0xT2", "blockNum": "0x10", "category": "erc20", "from": other, "to": me, "value": 12.5, "asset": "USDC"},
+        {"hash": "0xT1", "blockNum": "0xf", "category": "erc20", "from": me, "to": other, "value": 3, "asset": "DEGEN"},
+        {"hash": "0xT1", "blockNum": "0xf", "category": "external", "from": me.upper().replace("0X", "0x"), "to": other,
+         "value": 0.0123, "asset": "ETH"},
+    ]
+    rows = base_rows(me, transfers)
+    assert [r["tx"] for r in rows] == ["0xt2", "0xt1"]
+    assert rows[0] == {"tx": "0xt2", "block": 16, "failed": False, "direction": "in", "amount": "12.5", "unit": "USDC",
+                       "counterparty": other}
+    assert rows[1]["direction"] == "out" and rows[1]["unit"] == "ETH" and rows[1]["amount"] == "0.0123"
+
+
+def test_base_poller_alerts_with_the_token_unit_and_caps_compute_units():
+    w, go = _poller(BASE, [[{"tx": "0xa"}], [{"tx": "0xb", "unit": "USDC", "amount": "5", "direction": "in"}, {"tx": "0xa"}]])
+    asyncio.run(go())
+    alert = w.recent()[0]
+    assert alert["chain"] == "base" and alert["unit"] == "USDC" and alert["amount"] == "5"
+    assert w.status()["estimated_cu"] == 2 * 240
+    # One check (240 CU) every 3 minutes at most: under 3.5 million CU a month whatever the list size.
+    assert 30 * 24 * 3600 / BASE.min_call_spacing * BASE.cu_per_call < 3_500_000

@@ -40,7 +40,7 @@ export default function ResultTabs({ result, active, onTabChange: setActive, hig
         ))}
       </div>
 
-      <div className="tab-body" role="tabpanel">
+      <div className="tab-body" role="tabpanel" key={active}>
         {active === "Findings" && result.x402_status && (
           <dl className="grid-dl status-strip">
             <dt>Request</dt><dd>{result.x402_status.request}</dd>

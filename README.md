@@ -1,6 +1,6 @@
 # Crypto-Dashboard
 
-Payments Intelligence Dashboard (student project).
+Blockchain Intelligence Dashboard (student project).
 
 - `frontend/`: React + Vite dashboard (Investigate, Cases, Live alerts, Models, Status, Sources pages).
 - `backend/`: Python FastAPI app: live Bitcoin, Ethereum, Base and Solana lookups, threat-list checks,

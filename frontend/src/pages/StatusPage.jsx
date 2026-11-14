@@ -6,7 +6,7 @@ import Icon from "../components/Icon.jsx";
 import { UsagePanel } from "../components/ApiUsage.jsx";
 
 const AUTO_REFRESH_SECONDS = 60;
-const PROVIDER_NAMES = { mempool: "mempool.space", blockstream: "blockstream.info", etherscan: "etherscan.io", alchemy: "alchemy.com" };
+const PROVIDER_NAMES = { mempool: "mempool.space", blockstream: "blockstream.info", etherscan: "etherscan.io", blockscout: "blockscout.com", alchemy: "alchemy.com" };
 
 // Is everything the dashboard depends on working right now?
 export default function StatusPage() {
@@ -116,8 +116,8 @@ export default function StatusPage() {
               )}
               <p className="small muted">
                 Bitcoin: mempool.space answers first; blockstream.info takes over when it is rate limited or down.
-                Ethereum: etherscan.io (3 calls per second, 100,000 a day), with alchemy.com as the backup.
-                Base and Solana: alchemy.com only. Live alerts use Alchemy's WebSocket. Everything on alchemy.com
+                Ethereum: etherscan.io (3 calls per second, 100,000 a day), then blockscout.com (when BLOCKSCOUT_API_KEY is set) and alchemy.com as backups.
+                Base and Solana: alchemy.com only. Ethereum live alerts use Alchemy's WebSocket; Base and Solana alerts check each watched address in turn. Everything on alchemy.com
                 needs ALCHEMY_API_KEY and ALCHEMY_ENABLED=true.
                 {providers.data.cache_entries > 0 && ` ${providers.data.cache_entries} recent answers cached.`}
               </p>

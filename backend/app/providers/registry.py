@@ -8,6 +8,7 @@ from app.providers.base import BitcoinProvider
 from app.providers.bitcoin_esplora import BlockstreamEsploraProvider
 from app.providers.bitcoin_mempool import MempoolSpaceProvider
 from app.providers.ethereum_alchemy import AlchemyProvider
+from app.providers.ethereum_blockscout import BlockscoutProvider
 from app.providers.ethereum_etherscan import EtherscanProvider
 from app.providers.failover import FailoverBitcoinProvider, FailoverEvmProvider
 from app.providers.solana_alchemy import SolanaProvider
@@ -40,19 +41,20 @@ def shared_bitcoin_provider(names: tuple[str, ...], mempool_url: str, esplora_ur
 
 
 def get_ethereum_provider(settings: Settings = Depends(get_settings)) -> FailoverEvmProvider | None:
-    """FastAPI dependency: Ethereum sources in failover order (Etherscan, then Alchemy when
-    ALCHEMY_ENABLED=true), or None when no source is available."""
+    """FastAPI dependency: Ethereum sources in failover order (Etherscan, then Blockscout when
+    BLOCKSCOUT_API_KEY is set, then Alchemy when ALCHEMY_ENABLED=true), or None when no source is available."""
     alchemy_key = settings.alchemy_api_key if settings.alchemy_enabled else None
-    if not settings.etherscan_api_key and not alchemy_key:
+    if not settings.etherscan_api_key and not settings.blockscout_api_key and not alchemy_key:
         return None
     return shared_evm_provider("ethereum", settings.etherscan_api_key, settings.etherscan_base_url,
                                settings.eth_chain_id, alchemy_key, settings.alchemy_endpoint,
-                               settings.http_timeout_seconds)
+                               settings.http_timeout_seconds, settings.blockscout_api_key,
+                               settings.blockscout_base_url)
 
 
 def get_base_provider(settings: Settings = Depends(get_settings)) -> FailoverEvmProvider | None:
-    """FastAPI dependency: Base through Alchemy (Etherscan's free plan has no Base), or None unless
-    ALCHEMY_API_KEY is set and ALCHEMY_ENABLED=true."""
+    """FastAPI dependency: Base through Alchemy (neither Etherscan's nor Blockscout's free plan has Base),
+    or None unless ALCHEMY_API_KEY is set and ALCHEMY_ENABLED=true."""
     if not settings.alchemy_api_key or not settings.alchemy_enabled:
         return None
     return shared_evm_provider("base", None, None, None, settings.alchemy_api_key, None,
@@ -62,11 +64,15 @@ def get_base_provider(settings: Settings = Depends(get_settings)) -> FailoverEvm
 @lru_cache(maxsize=4)
 def shared_evm_provider(chain: str, etherscan_key: str | None, etherscan_url: str | None, chain_id: int | None,
                         alchemy_key: str | None, alchemy_endpoint: str | None,
-                        timeout_seconds: float) -> FailoverEvmProvider:
+                        timeout_seconds: float, blockscout_key: str | None = None,
+                        blockscout_url: str | None = None) -> FailoverEvmProvider:
     """One failover chain per network for the whole process, so pacing, cooldowns and caches are shared."""
     sources = []
     if etherscan_key:
         sources.append(EtherscanProvider(etherscan_key, etherscan_url, chain_id, timeout_seconds))
+    if blockscout_key and chain == "ethereum":
+        sources.append(BlockscoutProvider(blockscout_key, blockscout_url or "https://api.blockscout.com",
+                                          chain_id or 1, timeout_seconds))
     if alchemy_key:
         # Use the pasted endpoint only when it is for this network; otherwise build it from the key.
         slug = "eth-mainnet" if chain == "ethereum" else "base-mainnet"

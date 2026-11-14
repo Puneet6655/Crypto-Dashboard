@@ -4,6 +4,8 @@
 !.env.example
 .venv
 data
+# ...except the x402 snapshot, which the Dockerfile copies in.
+!data/x402
 reports
 training
 tests

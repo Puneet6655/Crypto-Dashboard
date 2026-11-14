@@ -176,3 +176,12 @@ CREATE TABLE IF NOT EXISTS api_usage (
     errors  BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (day, source, kind)
 );
+
+-- ---- Added 2026-11-14: sign-up details and consent (see app/legal.py) ------------------------------
+-- The date of birth is checked at sign-up and never stored; age_confirmed_at records that the check passed.
+-- terms_version is the TERMS_VERSION the user last accepted; an older value means they are asked again.
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS user_type TEXT;
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS organisation TEXT;
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS age_confirmed_at TIMESTAMPTZ;
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS terms_version TEXT;
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ;

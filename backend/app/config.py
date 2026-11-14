@@ -38,6 +38,10 @@ class Settings:
     etherscan_api_key: str | None = field(default=None, repr=False)
     etherscan_base_url: str = "https://api.etherscan.io/v2/api"
     eth_chain_id: int = 1  # Ethereum mainnet (Base, 8453, is not in Etherscan's free plan)
+    # Blockscout PRO API: second Ethereum source, after Etherscan and before Alchemy. Empty key = not used.
+    # Its free plan has no Base, Polygon or zkSync since 1 Oct 2026, so Base stays on Alchemy.
+    blockscout_api_key: str | None = field(default=None, repr=False)
+    blockscout_base_url: str = "https://api.blockscout.com"
     # Alchemy: backup for Ethereum and the only source for Base. The endpoint URL contains the key.
     alchemy_api_key: str | None = field(default=None, repr=False)
     alchemy_endpoint: str | None = field(default=None, repr=False)
@@ -93,6 +97,8 @@ def get_settings() -> Settings:
         etherscan_api_key=(os.getenv("ETHERSCAN_API_KEY") or "").strip() or None,
         etherscan_base_url=os.getenv("ETHERSCAN_BASE_URL", "https://api.etherscan.io/v2/api").rstrip("/"),
         eth_chain_id=int(os.getenv("ETH_CHAIN_ID", "1")),
+        blockscout_api_key=(os.getenv("BLOCKSCOUT_API_KEY") or "").strip() or None,
+        blockscout_base_url=os.getenv("BLOCKSCOUT_BASE_URL", "https://api.blockscout.com").rstrip("/"),
         **_alchemy_settings(os.getenv("ALCHEMY_API_KEY"), os.getenv("ALCHEMY_ENDPOINT")),
         alchemy_enabled=os.getenv("ALCHEMY_ENABLED", "false").strip().lower() in ("1", "true", "yes"),
         alchemy_billing_day=int(os.getenv("ALCHEMY_BILLING_DAY", "1") or 1),

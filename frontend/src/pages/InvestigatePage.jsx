@@ -5,6 +5,9 @@ import EntityDetails from "../components/EntityDetails.jsx";
 import ResultTabs from "../components/ResultTabs.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { AddToCaseButton } from "../components/AddToCaseMenu.jsx";
+import { WEB3_DESIGN } from "../config/w3Design.js";
+import W3RiskGauge from "../w3/W3RiskGauge.jsx";
+import W3SearchPanel from "../w3/W3SearchPanel.jsx";
 
 // The original dashboard: controls, graph and details, with the result tabs below.
 // Its state lives in App (useInvestigation), so the result survives a visit to another page.
@@ -31,13 +34,16 @@ export default function InvestigatePage({ investigation: inv }) {
       </PageHeader>
 
       <div className="layout">
-        <ControlsPanel
+        {WEB3_DESIGN ? (
+          // Web3 mode: one smart search box, method cards, no demo cases.
+          <W3SearchPanel form={inv.form} onFormChange={inv.handleFormChange} onStart={inv.handleStart} isLoading={inv.status === "loading"} />
+        ) : <ControlsPanel
           form={inv.form}
           onFormChange={inv.handleFormChange}
           onCaseChange={inv.handleCaseChange}
           onStart={inv.handleStart}
           isLoading={inv.status === "loading"}
-        />
+        />}
         <GraphView
           status={inv.status}
           error={inv.error}
@@ -48,12 +54,22 @@ export default function InvestigatePage({ investigation: inv }) {
           startedAt={inv.startedAt}
           methodLabel={METHODS.find((m) => m.id === inv.form.method)?.label ?? inv.form.method}
         />
-        <EntityDetails
-          result={result}
-          selectedId={inv.selectedId}
-          onSelect={inv.setSelectedId}
-          onEvidenceClick={inv.handleEvidenceClick}
-        />
+        {WEB3_DESIGN ? (
+          // Web3 mode: score ring on top, and the details slide in fresh for each selection.
+          <div className="w3-side">
+            {inv.status === "done" && <W3RiskGauge key={result?.investigation_id} result={result} />}
+            <div key={inv.selectedId || "none"} className="w3-slide-in">
+              <EntityDetails result={result} selectedId={inv.selectedId} onSelect={inv.setSelectedId} onEvidenceClick={inv.handleEvidenceClick} />
+            </div>
+          </div>
+        ) : (
+          <EntityDetails
+            result={result}
+            selectedId={inv.selectedId}
+            onSelect={inv.setSelectedId}
+            onEvidenceClick={inv.handleEvidenceClick}
+          />
+        )}
       </div>
 
       <ResultTabs

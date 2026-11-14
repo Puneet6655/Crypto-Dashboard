@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir -r requirements-deploy.txt
 
 COPY app ./app
 COPY models ./models
+# x402 snapshot (about 6 MB, see data/x402/README.md); nothing else from data/ is copied.
+COPY data/x402 ./data/x402
 
 # Most hosts set PORT; 8000 when they do not.
 EXPOSE 8000

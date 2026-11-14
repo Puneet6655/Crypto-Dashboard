@@ -13,7 +13,7 @@ export const MODES = [
   {
     id: "x402",
     label: "x402 / Agentic Payments",
-    inputTypes: ["x402_payment_id"],
+    inputTypes: ["base_txid", "base_address", "solana_address", "x402_payment_id"],
   },
 ];
 
@@ -36,7 +36,7 @@ export const INPUT_TYPES = {
 export const METHODS = [
   {
     id: "live_lookup",
-    label: "Live lookup (mempool.space, Etherscan or Alchemy via backend)",
+    label: "Live lookup (mempool.space, Etherscan, Blockscout or Alchemy via backend)",
     modes: ["crypto_investigation"],
     inputTypes: ["bitcoin_address", "bitcoin_txid", "ethereum_address", "ethereum_txid", "base_address", "base_txid", "solana_address", "solana_txid"],
     status: "ready",
@@ -79,6 +79,14 @@ export const METHODS = [
     label: "XGBoost (live score of any address, SHAP)",
     modes: ["crypto_investigation"],
     inputTypes: ["bitcoin_address"],
+    status: "ready",
+    runsOn: "server",
+  },
+  {
+    id: "x402_rules",
+    label: "x402 payment checks (phishing links, risky servers, sanctions, odd amounts)",
+    modes: ["x402"],
+    inputTypes: ["base_txid", "base_address", "solana_address"],
     status: "ready",
     runsOn: "server",
   },

@@ -92,6 +92,11 @@ export default function SourcesPage() {
         )}
       </PageHeader>
 
+      <p className="notice info small">
+        Ethereum data is{" "}
+        <a href="https://etherscan.io" target="_blank" rel="noopener noreferrer">powered by Etherscan.io APIs</a>.
+        Each source below is used under its own licence or terms; see also the <a href="#/terms">terms of use</a>.
+      </p>
       {!isAdmin && (
         <p className="notice info small"><Icon name="lock" size={14} /> Only admins can change this list.</p>
       )}
@@ -214,6 +219,7 @@ function useSourceStatus() {
     if (name === "mempool.space REST API") items = [lookup(bitcoin, "mempool.space", "Bitcoin")];
     else if (name.startsWith("Blockstream Esplora")) items = [lookup(bitcoin, "blockstream.info", "Bitcoin")];
     else if (name === "Etherscan API V2") items = [lookup(ethereum, "etherscan.io", "Ethereum")];
+    else if (name === "Blockscout PRO API") items = [lookup(ethereum, "blockscout.com", "Ethereum")];
     else if (name === "Alchemy API") {
       const st = alerts.data?.status;
       items = [

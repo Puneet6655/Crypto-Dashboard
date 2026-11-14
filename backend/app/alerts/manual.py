@@ -5,6 +5,8 @@ Each chain has its own cap, set by what watching costs:
   OFAC addresses; hand-added and case addresses go first). Cost follows activity, not list size.
 - Solana: one getSignaturesForAddress call (40 CU) per address per round, at most one call every 30 seconds
   in total, so the cost is capped at about 3.5 million CU a month (the free plan has 30 million).
+- Base: two alchemy_getAssetTransfers calls (240 CU) per address per round, at most one check every 3 minutes,
+  so also about 3.5 million CU a month at most (Alchemy has no filtered mined-transaction WebSocket on Base).
 - Bitcoin: polled from mempool.space (blockstream.info as backup), which costs no Alchemy units.
 """
 from __future__ import annotations
@@ -20,12 +22,13 @@ from app.validation import (
     normalize_hex,
 )
 
-CHAINS = ("ethereum", "solana", "bitcoin")
-MAX_PER_CHAIN = {"ethereum": 100, "solana": 20, "bitcoin": 50}
+CHAINS = ("ethereum", "base", "solana", "bitcoin")
+MAX_PER_CHAIN = {"ethereum": 100, "base": 20, "solana": 20, "bitcoin": 50}
 REASON = "watchlist"
 
 _PROBLEMS = {
     "ethereum": "An Ethereum address is 0x followed by 40 hexadecimal characters.",
+    "base": "A Base address is 0x followed by 40 hexadecimal characters.",
     "solana": "A Solana address is 32 to 44 base58 characters (no 0, O, I or l) that decode to 32 bytes.",
     "bitcoin": "A Bitcoin address starts with 1 or 3 (26 to 35 characters) or bc1q / bc1p (SegWit or Taproot).",
 }
@@ -49,7 +52,7 @@ def clean(chain: str, address: str) -> tuple[str | None, str | None]:
         return None, f"Live alerts watch {', '.join(CHAINS)}."
     if not value:
         return None, "Enter an address."
-    if chain == "ethereum" and is_ethereum_address(value):
+    if chain in ("ethereum", "base") and is_ethereum_address(value):
         return normalize_hex(value), None
     if chain == "solana" and is_solana_address(value):
         return value, None

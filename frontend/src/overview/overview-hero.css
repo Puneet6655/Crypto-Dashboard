@@ -1,0 +1,150 @@
+/* Overview hero (#/overview). Every class starts with "oh-" so nothing here
+   can change the look of the existing pages. Colours live in the tokens below. */
+.oh-hero {
+  --oh-bg-1: #0b0718;
+  --oh-bg-2: #1c1240;
+  --oh-violet: #8b5cf6;
+  --oh-violet-soft: #c4b5fd;
+  --oh-pink: #f0abfc;
+  --oh-text: #f5f3ff;
+  --oh-muted: #b9b2d6;
+  --oh-glass: rgba(255, 255, 255, 0.06);
+  --oh-glass-border: rgba(255, 255, 255, 0.14);
+
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 20px;
+  min-height: 620px;
+  padding: 72px 32px 32px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 48px;
+  color: var(--oh-text);
+  background: radial-gradient(120% 80% at 50% 0%, var(--oh-bg-2) 0%, var(--oh-bg-1) 70%);
+  box-shadow: 0 24px 60px rgba(20, 10, 50, 0.35);
+}
+
+/* Background layers */
+.oh-bg { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.oh-glow {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(40% 35% at 50% 0%, rgba(240, 171, 252, 0.35), transparent 70%),
+    radial-gradient(35% 40% at 15% 85%, rgba(139, 92, 246, 0.25), transparent 70%),
+    radial-gradient(35% 40% at 85% 85%, rgba(236, 72, 153, 0.18), transparent 70%);
+}
+.oh-planet {
+  position: absolute; left: 50%; top: 52%;
+  width: 150%; aspect-ratio: 1; transform: translateX(-50%);
+  border-radius: 50%;
+  border-top: 1px solid rgba(196, 181, 253, 0.45);
+  background: radial-gradient(60% 40% at 50% 0%, rgba(139, 92, 246, 0.28), transparent 70%);
+  box-shadow: 0 -20px 80px rgba(139, 92, 246, 0.25);
+}
+.oh-beam {
+  position: absolute; left: 50%; top: 45%; bottom: 0;
+  width: 220px; transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(196, 181, 253, 0) 0%, rgba(196, 181, 253, 0.3) 45%, rgba(255, 255, 255, 0.45) 100%);
+  filter: blur(30px);
+  animation: oh-pulse 4s ease-in-out infinite;
+}
+.oh-beam-core {
+  position: absolute; left: 50%; top: 0; bottom: 0;
+  width: 4px; transform: translateX(-50%);
+  /* faint behind the headline, bright where it meets the planet */
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.08) 40%, #fff 62%, #fff);
+  filter: blur(2px);
+  opacity: 0.8;
+  animation: oh-pulse 4s ease-in-out infinite;
+}
+.oh-streak {
+  position: absolute; top: -30%;
+  width: 1px; height: 28%;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.6));
+  animation: oh-fall 6s linear infinite;
+}
+
+/* Floating coins in glass circles */
+.oh-coin {
+  position: absolute; transform: translate(-50%, -50%);
+  display: grid; place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.03) 70%);
+  border: 1px solid var(--oh-glass-border);
+  box-shadow: inset 0 0 18px rgba(196, 181, 253, 0.25), 0 8px 30px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: oh-float 6s ease-in-out infinite;
+}
+.oh-coin svg { width: 46%; height: 46%; }
+.oh-coin.faint { opacity: 0.45; }
+
+/* Text */
+.oh-content { position: relative; max-width: 760px; margin: 0 auto; text-align: center; display: grid; justify-items: center; gap: 20px; }
+.oh-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px; font-size: 13px;
+  background: var(--oh-glass); border: 1px solid var(--oh-glass-border);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.oh-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 10px #4ade80; animation: oh-pulse 2s ease-in-out infinite; }
+.oh-title { font-size: clamp(32px, 5.2vw, 60px); line-height: 1.08; font-weight: 600; letter-spacing: -0.03em; margin: 0; color: var(--oh-text); }
+.oh-gradient-text {
+  background: linear-gradient(90deg, var(--oh-violet-soft), var(--oh-pink), var(--oh-violet-soft));
+  background-size: 200% auto;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: oh-shine 6s linear infinite;
+}
+.oh-sub { margin: 0; max-width: 520px; color: var(--oh-muted); font-size: 16px; }
+.oh-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 4px; }
+.oh-btn {
+  display: inline-flex; align-items: center; padding: 11px 22px; border-radius: 999px;
+  font-weight: 600; font-size: 14px; color: #fff;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.oh-btn:hover { text-decoration: none; transform: translateY(-2px); }
+.oh-btn.primary { background: linear-gradient(135deg, #7c3aed, #a855f7); box-shadow: 0 8px 24px rgba(124, 58, 237, 0.5); }
+.oh-btn.primary:hover { box-shadow: 0 12px 32px rgba(168, 85, 247, 0.6); }
+.oh-btn.ghost { background: var(--oh-glass); border: 1px solid var(--oh-glass-border); }
+.oh-btn.ghost:hover { background: rgba(255, 255, 255, 0.12); }
+.oh-btn:focus-visible { outline: 2px solid var(--oh-violet-soft); outline-offset: 3px; }
+
+/* Glass stat cards */
+.oh-stats { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.oh-stat {
+  padding: 22px 22px 20px; border-radius: 16px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02)), rgba(18, 10, 40, 0.55);
+  border: 1px solid var(--oh-glass-border);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition: transform 0.25s ease, border-color 0.25s ease;
+}
+.oh-stat:hover { transform: translateY(-4px); border-color: rgba(196, 181, 253, 0.5); }
+.oh-stat-value { font-size: clamp(28px, 3.2vw, 44px); font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; text-shadow: 0 0 24px rgba(196, 181, 253, 0.45); }
+.oh-stat-label { margin-top: 4px; color: #cfc9e8; font-size: 13px; }
+
+@keyframes oh-pulse { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
+@keyframes oh-float { 0%, 100% { transform: translate(-50%, -50%); } 50% { transform: translate(-50%, calc(-50% - 14px)); } }
+@keyframes oh-fall { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(520%); opacity: 0; } }
+@keyframes oh-shine { to { background-position: 200% center; } }
+
+/* Phones and tablets */
+@media (max-width: 900px) {
+  .oh-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .oh-coin.faint { display: none; }
+}
+@media (max-width: 560px) {
+  .oh-hero { padding: 48px 16px 16px; min-height: 0; gap: 32px; border-radius: 16px; }
+  .oh-stats { gap: 10px; }
+  .oh-stat { padding: 16px; }
+  .oh-coin { display: none; }
+}
+
+/* Respect "reduce motion": keep the look, stop the movement */
+@media (prefers-reduced-motion: reduce) {
+  .oh-hero *, .oh-hero *::before, .oh-hero *::after { animation: none !important; transition: none !important; }
+  .oh-streak { display: none; }
+}

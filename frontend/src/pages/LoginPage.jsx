@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { useAuth } from "../auth/AuthContext.jsx";
 import Icon from "../components/Icon.jsx";
+import SignupExtras, { EMPTY_EXTRAS, extrasBody, extrasProblem } from "../legal/SignupExtras.jsx";
+import { LoginLegalLinks } from "../legal/LegalBits.jsx";
 
 // Sign in, or create a viewer account. Admin rights are never given from this page.
 export default function LoginPage() {
   const { config, signIn, signUp } = useAuth();
   const [mode, setMode] = useState("signin");
   const [form, setForm] = useState({ email: "", name: "", password: "", confirm: "" });
+  const [extras, setExtras] = useState(EMPTY_EXTRAS); // date of birth, user type, consent (sign-up only)
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -21,10 +24,15 @@ export default function LoginPage() {
       setError("The two passwords are different.");
       return;
     }
+    const extrasError = mode === "signup" ? extrasProblem(extras, config?.min_age) : "";
+    if (extrasError) {
+      setError(extrasError);
+      return;
+    }
     setBusy(true);
     try {
       if (mode === "signin") await signIn(form.email, form.password);
-      else await signUp(form.email, form.name, form.password);
+      else await signUp(form.email, form.name, form.password, extrasBody(extras));
     } catch (err) {
       setError(err.message);
       setBusy(false);
@@ -36,7 +44,7 @@ export default function LoginPage() {
       <section className="login-art" aria-hidden="true">
         <div className="login-art-inner">
           <span className="brand-mark large"><Icon name="brand" size={34} /></span>
-          <h2>Payments Intelligence</h2>
+          <h2>Blockchain Intelligence</h2>
           <p>Follow Bitcoin payments, screen them against sanctions and ransomware lists, and build cases with evidence you can trace back to its source.</p>
           <ul className="login-points">
             <li><Icon name="investigate" size={18} /> Live lookups with automatic backup sources</li>
@@ -98,6 +106,7 @@ export default function LoginPage() {
               <input type="password" value={form.confirm} onChange={set("confirm")} autoComplete="new-password" required />
             </label>
           )}
+          {mode === "signup" && <SignupExtras value={extras} onChange={setExtras} config={config} />}
 
           {error && <p className="notice error small" role="alert">{error}</p>}
 
@@ -107,6 +116,7 @@ export default function LoginPage() {
           <p className="small muted center">
             <Icon name="lock" size={12} /> Passwords are stored only as salted scrypt hashes.
           </p>
+          <LoginLegalLinks />
         </form>
       </section>
     </div>

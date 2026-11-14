@@ -110,8 +110,8 @@ export function useInvestigation() {
   const handleStart = () => run(form);
 
   // Look up a Bitcoin address or transaction live, e.g. from a case ("Investigate" button).
-  function investigateLive(inputType, value) {
-    const request = { mode: "crypto_investigation", inputType, value, caseId: "", method: "live_lookup" };
+  function investigateLive(inputType, value, mode = "crypto_investigation", method = "live_lookup") {
+    const request = { mode, inputType, value, caseId: "", method };
     setForm(request);
     run(request);
   }
