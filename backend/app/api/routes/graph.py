@@ -32,20 +32,28 @@ class ExpandRequest(BaseModel):
     per_node_limit: int = Field(40, ge=5, le=500, description="Counterparties shown per node before '+N more'")
 
 
-def _provider(chain: str, settings: Settings):
-    if chain == "bitcoin":
-        return get_bitcoin_provider(settings)
-    if chain == "ethereum":
-        return get_ethereum_provider(settings)
-    if chain == "base":
-        return get_base_provider(settings)
-    return get_solana_provider(settings)
+def _provider(chain: str, settings: Settings, request: Request | None = None):
+    getter = {"bitcoin": get_bitcoin_provider, "ethereum": get_ethereum_provider, "base": get_base_provider,
+              "solana": get_solana_provider}[chain]
+    if request is not None:  # honour test overrides, as Depends() would
+        getter = request.app.dependency_overrides.get(getter, getter)
+    try:
+        return getter(settings)
+    except TypeError:  # an override that takes no settings
+        return getter()
+
+
+def _expander(settings: Settings):
+    return get_expander(settings.graph_alchemy_daily_cu, settings.btc_address_pages, settings.evm_list_pages,
+                        settings.graph_solana_txs)
 
 
 @router.get("/status")
 def status(settings: Settings = Depends(get_settings)) -> dict:
     """Graph mode's Alchemy allowance, cache size, and per-chain limits."""
-    return {**get_expander(settings.graph_alchemy_daily_cu).status(), "fetch_cap": FETCH_CAP,
+    return {**_expander(settings).status(), "fetch_cap": FETCH_CAP,
+            "pages": {"bitcoin": settings.btc_address_pages, "evm": settings.evm_list_pages,
+                      "solana_txs_read": settings.graph_solana_txs},
             "max_nodes": settings.graph_max_nodes, "exchange_labels": get_cex_labels().status(),
             "chains": {chain: _provider(chain, settings) is not None for chain in FETCH_CAP}}
 
@@ -59,10 +67,10 @@ async def expand(body: ExpandRequest, request: Request, settings: Settings = Dep
         if address is None:
             raise HTTPException(status_code=422, detail=f"{raw!r} is not a valid {body.chain} address.")
         addresses.append(address)
-    provider = _provider(body.chain, settings)
+    provider = _provider(body.chain, settings, request)
     if provider is None:
         raise HTTPException(status_code=503, detail=NOT_SET_UP[body.chain])
-    expander = get_expander(settings.graph_alchemy_daily_cu)
+    expander = _expander(settings)
     max_new = min(body.max_new_nodes, settings.graph_max_nodes)
 
     async def lines():

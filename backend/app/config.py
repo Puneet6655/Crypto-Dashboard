@@ -58,6 +58,12 @@ class Settings:
     dune_api_key: str | None = field(default=None, repr=False)
     graph_alchemy_daily_cu: int = 300_000
     graph_max_nodes: int = 20_000
+    # How much history one lookup reads (Investigate and graph mode share these). Each provider call already
+    # asks for its maximum page; these say how many pages to follow when a page comes back full.
+    btc_address_pages: int = 4  # mempool.space / Blockstream: 25 confirmed txs per page (server fixed)
+    evm_list_pages: int = 3  # Etherscan / Blockscout: 1,000 rows per page (10 pages most); Alchemy: 1,000 per pageKey
+    solana_tx_detail_limit: int = 60  # Investigate: newest Solana txs read in full (1 call, 40 CU each; ~6 a second)
+    graph_solana_txs: int = 25  # graph mode: the same, per expanded Solana address
 
 
 def _provider_list(value: str) -> tuple[str, ...]:
@@ -84,7 +90,7 @@ def get_settings() -> Settings:
             for origin in os.getenv("FRONTEND_ORIGIN", "http://localhost:5173").split(",")
             if origin.strip()
         ],
-        max_graph_nodes=int(os.getenv("MAX_GRAPH_NODES", "50")),
+        max_graph_nodes=int(os.getenv("MAX_GRAPH_NODES", "250")),
         # Postgres (Neon) connection string. Empty means "do not save data".
         database_url=os.getenv("DATABASE_URL") or None,
         btc_providers=_provider_list(os.getenv("BTC_PROVIDERS", ",".join(KNOWN_BTC_PROVIDERS))),
@@ -107,7 +113,20 @@ def get_settings() -> Settings:
         dune_api_key=(os.getenv("DUNE_API_KEY") or os.getenv("DUNE_API_Key") or "").strip() or None,
         graph_alchemy_daily_cu=int(os.getenv("GRAPH_ALCHEMY_DAILY_CU", "300000")),
         graph_max_nodes=int(os.getenv("GRAPH_MAX_NODES", "20000")),
+        btc_address_pages=_clamp(os.getenv("BTC_ADDRESS_PAGES"), 4, 1, 20),
+        evm_list_pages=_clamp(os.getenv("EVM_LIST_PAGES"), 3, 1, 10),
+        solana_tx_detail_limit=_clamp(os.getenv("SOLANA_TX_DETAIL_LIMIT"), 60, 1, 1000),
+        graph_solana_txs=_clamp(os.getenv("GRAPH_SOLANA_TXS"), 25, 1, 1000),
     )
+
+
+def _clamp(value: str | None, default: int, low: int, high: int) -> int:
+    """An integer setting kept inside [low, high]; empty or unreadable means the default."""
+    try:
+        number = int(value) if value not in (None, "") else default
+    except ValueError:
+        number = default
+    return max(low, min(high, number))
 
 
 def _alchemy_settings(key: str | None, endpoint: str | None) -> dict:

@@ -8,7 +8,7 @@ under 250 CU per second for the whole API process. Alchemy's terms ask for no at
 they do forbid scraping and spreading use over several accounts to get round limits.
 
 Address history comes from two groups of transfer calls, each a pair (sent by / received by the
-address) of up to 1,000 records: ETH (normal and internal transfers) and tokens (ERC-20, ERC-721,
+address) of up to 1,000 records per call (pageKey is followed for up to EVM_LIST_PAGES calls): ETH (normal and internal transfers) and tokens (ERC-20, ERC-721,
 ERC-1155). Keeping them apart stops token spam from filling the 1,000-record page and pushing out
 older ETH transactions. Each pair serves both lists in its group, so all four lists cost 480 CU.
 Asset transfers carry no gas fee, success flag or called function, so transactions from Alchemy
@@ -111,8 +111,11 @@ class AlchemyProvider:
 
     def __init__(self, api_key: str, chain: str = "ethereum", timeout_seconds: float = 10,
                  transport: httpx.AsyncBaseTransport | None = None, cu_per_second: float = CU_PER_SECOND,
-                 url: str | None = None):
+                 url: str | None = None, max_pages: int = 1):
         slug, self.chain_id = NETWORKS[chain]
+        # Calls of 1,000 transfers (Alchemy's maximum) one direction may make by following pageKey (EVM_LIST_PAGES).
+        self.max_pages = max(1, int(max_pages))
+        self.calls_made: dict[tuple[str, str], int] = {}  # (address, group) -> transfer calls in its last fetch
         self.slug = slug
         self._api_key = api_key
         self.chain = chain
@@ -259,18 +262,18 @@ class AlchemyProvider:
         try:
             base = {"fromBlock": "0x0", "toBlock": "latest", "category": GROUPS[group], "order": "desc",
                     "withMetadata": True, "excludeZeroValue": False, "maxCount": hex(MAX_RECORDS_PER_CALL)}
-            sent, received = await asyncio.gather(
-                self._rpc("alchemy_getAssetTransfers", [{**base, "fromAddress": address}]),
-                self._rpc("alchemy_getAssetTransfers", [{**base, "toAddress": address}]))
+            (sent, sent_done, sent_calls), (received, received_done, received_calls) = await asyncio.gather(
+                self._pages({**base, "fromAddress": address}), self._pages({**base, "toAddress": address}))
             seen, rows = set(), []
-            for row in (sent or {}).get("transfers", []) + (received or {}).get("transfers", []):
+            for row in sent + received:
                 row_key = row.get("uniqueId") or (row.get("hash"), row.get("category"), row.get("from"), row.get("to"))
                 if row_key not in seen:
                     seen.add(row_key)
                     rows.append(row)
             rows.sort(key=lambda r: to_int(r.get("blockNum"), 16) or 0, reverse=True)
-            # A call that returned a pageKey stopped at 1,000 records: older history of this group is missing.
-            self._complete[key] = not ((sent or {}).get("pageKey") or (received or {}).get("pageKey"))
+            # A last call that still returned a pageKey means older history of this group was not read.
+            self._complete[key] = sent_done and received_done
+            self.calls_made[key] = sent_calls + received_calls
             self.cache.put(("transfers", *key), rows, TTL_RECENT)
             if not future.done():
                 future.set_result(rows)
@@ -285,6 +288,19 @@ class AlchemyProvider:
             raise
         finally:
             self._inflight.pop(key, None)
+
+    async def _pages(self, params: dict) -> tuple[list[dict], bool, int]:
+        """(transfers, reached the oldest record, calls made) for one direction: 1,000 per call, following
+        pageKey up to max_pages calls (120 CU each)."""
+        rows, page_key, calls = [], None, 0
+        while calls < self.max_pages:
+            body = await self._rpc("alchemy_getAssetTransfers", [{**params, **({"pageKey": page_key} if page_key else {})}])
+            calls += 1
+            rows += (body or {}).get("transfers", [])
+            page_key = (body or {}).get("pageKey")
+            if not page_key:
+                return rows, True, calls
+        return rows, False, calls
 
     async def recent_transfers(self, address: str, max_count: int = 20) -> list[dict]:
         """The newest transfers sent by or to the address (ETH, internal ETH and ERC-20), newest first.
@@ -306,7 +322,7 @@ class AlchemyProvider:
     def _raw_value(self, row: dict) -> int:
         return to_int((row.get("rawContract") or {}).get("value"), 16) or 0
 
-    async def get_address_transactions(self, address: str, limit: int = MAX_RECORDS_PER_CALL) -> list[EthTransaction]:
+    async def get_address_transactions(self, address: str, limit: int | None = None) -> list[EthTransaction]:
         rows = [r for r in await self._transfers(address, "eth") if r.get("category") == "external"]
         provenance = self._provenance(f"alchemy_getAssetTransfers external {address.lower()}")
         return [EthTransaction(
@@ -315,7 +331,7 @@ class AlchemyProvider:
             contract_created=None, value_wei=str(self._raw_value(r)), fee_wei=None, method=None,
             provenance=provenance, **self._common(r)) for r in rows][:limit]
 
-    async def get_token_transfers(self, address: str, limit: int = MAX_RECORDS_PER_CALL) -> list[EthTokenTransfer]:
+    async def get_token_transfers(self, address: str, limit: int | None = None) -> list[EthTokenTransfer]:
         rows = [r for r in await self._transfers(address, "tokens") if r.get("category") == "erc20"]
         return [EthTokenTransfer(
             token_contract=((r.get("rawContract") or {}).get("address") or "").lower(), token_symbol=plain_text(r.get("asset")),
@@ -323,13 +339,13 @@ class AlchemyProvider:
             to_address=(r.get("to") or "").lower(), value_raw=str(self._raw_value(r)), **self._common(r))
             for r in rows][:limit]
 
-    async def get_internal_transfers(self, address: str, limit: int = MAX_RECORDS_PER_CALL) -> list[EthInternalTransfer]:
+    async def get_internal_transfers(self, address: str, limit: int | None = None) -> list[EthInternalTransfer]:
         rows = [r for r in await self._transfers(address, "eth") if r.get("category") == "internal"]
         return [EthInternalTransfer(
             from_address=r["from"].lower(), to_address=lower(r.get("to")), contract_created=None,
             value_wei=str(self._raw_value(r)), kind="call", failed=False, **self._common(r)) for r in rows][:limit]
 
-    async def get_nft_transfers(self, address: str, limit: int = MAX_RECORDS_PER_CALL) -> list[EthNftTransfer]:
+    async def get_nft_transfers(self, address: str, limit: int | None = None) -> list[EthNftTransfer]:
         out = []
         for r in await self._transfers(address, "tokens"):
             contract = ((r.get("rawContract") or {}).get("address") or "").lower()
@@ -342,7 +358,7 @@ class AlchemyProvider:
                 for item in r.get("erc1155Metadata") or []:
                     out.append(EthNftTransfer(standard="ERC-1155", token_id=str(to_int(item.get("tokenId"), 16) or 0),
                                               quantity=str(to_int(item.get("value"), 16) or 0), **shared))
-        return out[:2 * limit]
+        return out if limit is None else out[:2 * limit]
 
     # ---- holdings now (Token, Prices and NFT APIs) -----------------------------------------------
 

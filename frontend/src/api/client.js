@@ -80,9 +80,12 @@ export function startInvestigation({ mode, inputType, value, method }, { signal 
     body: { mode, input_type: inputType, value: value.trim(), method },
     signal,
     // Model methods load a saved model and compute SHAP on first use, which can take longer; Bitcoin
-    // address lookups also add the live XGBoost score (up to 25 s of extra provider requests).
+    // address lookups also add the live XGBoost score (up to 25 s of extra provider requests). Address
+    // lookups now read several pages of history (BTC_ADDRESS_PAGES, EVM_LIST_PAGES) and Solana reads up
+    // to SOLANA_TX_DETAIL_LIMIT transactions at about 6 a second, so they get more time too.
     timeoutMs: ["random_forest", "xgboost"].includes(method) ? 120000
-      : inputType === "bitcoin_address" ? 60000 : undefined,
+      : ["bitcoin_address", "ethereum_address", "base_address", "solana_address"].includes(inputType) ? 60000
+      : undefined,
   });
 }
 

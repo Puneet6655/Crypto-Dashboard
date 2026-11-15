@@ -45,6 +45,7 @@ log = logging.getLogger("app.providers.etherscan")
 
 MIN_SECONDS_BETWEEN_CALLS = 0.36  # free plan: 3 calls per second
 DAILY_LIMIT_PAUSE_SECONDS = 3600.0
+MAX_LIST_ROWS = 10_000  # Etherscan (and Blockscout's copy of its API) answer at most page x offset = 10,000 rows
 NETWORK_NAMES = {1: "mainnet", 11155111: "sepolia"}
 
 _utcnow, _int, _time, _text, _addr = utcnow, to_int, from_unix, plain_text, lower
@@ -60,8 +61,11 @@ class EtherscanProvider:
 
     def __init__(self, api_key: str, base_url: str = "https://api.etherscan.io/v2/api", chain_id: int = 1,
                  timeout_seconds: float = 10, transport: httpx.AsyncBaseTransport | None = None,
-                 min_interval: float = MIN_SECONDS_BETWEEN_CALLS):
+                 min_interval: float = MIN_SECONDS_BETWEEN_CALLS, max_pages: int = 1):
         self._api_key = api_key
+        # Pages of 1,000 rows one list may read (EVM_LIST_PAGES). Etherscan refuses page x offset > 10,000.
+        self.max_pages = max(1, min(int(max_pages), MAX_LIST_ROWS // MAX_RECORDS_PER_CALL))
+        self._list_complete: dict[tuple[str, str], bool] = {}
         register_secret(api_key)
         self.base_url = base_url
         self.chain_id = chain_id
@@ -214,41 +218,58 @@ class EtherscanProvider:
         return {"module": "account", "action": action, "address": address.lower(), "startblock": 0,
                 "endblock": 99_999_999, "page": 1, "offset": min(limit, MAX_RECORDS_PER_CALL), "sort": "desc"}
 
-    async def _list(self, action: str, address: str, limit: int, convert) -> list:
-        """Newest-first rows of one list call (up to 1,000), converted; cached for 30 s."""
+    async def _list(self, action: str, address: str, limit: int | None, convert) -> list:
+        """Newest-first rows of one list (1,000 per call, the most Etherscan returns), converted; cached for 30 s.
+
+        When a page comes back full, the next page is read too, up to max_pages (EVM_LIST_PAGES) or `limit`
+        rows. Each extra page is one more call at 3 a second, so only busy addresses pay for it."""
+        limit = min(limit or self.max_pages * MAX_RECORDS_PER_CALL, MAX_LIST_ROWS)
         params = self._list_params(action, address, limit)
+        pages = -(-limit // params["offset"])
 
         async def fetch():
-            rows, url = await self._call(params, allow_empty=True)
-            if not isinstance(rows, list):
-                raise ProviderError(f"{self.label} returned an unexpected {action} list", 502)
-            provenance = self._provenance(url)
-            return [convert(row, provenance) for row in rows]
+            out, seen, full = [], set(), False
+            for page in range(1, pages + 1):
+                rows, url = await self._call({**params, "page": page}, allow_empty=True)
+                if not isinstance(rows, list):
+                    raise ProviderError(f"{self.label} returned an unexpected {action} list", 502)
+                provenance = self._provenance(url)
+                for row in rows:
+                    # A new transaction between two page calls shifts rows by one: skip the repeat.
+                    key = tuple(sorted((k, str(v)) for k, v in row.items())) if isinstance(row, dict) else row
+                    if key not in seen:
+                        seen.add(key)
+                        out.append(convert(row, provenance))
+                full = len(rows) >= params["offset"]
+                if not full:
+                    break
+            self._list_complete[(action, address.lower())] = not full
+            return out[:limit]
 
-        return list(await self._cached((action, address.lower(), params["offset"]), TTL_RECENT, fetch))
+        return list(await self._cached((action, address.lower(), params["offset"], pages), TTL_RECENT, fetch))
 
-    async def get_address_transactions(self, address: str, limit: int = MAX_RECORDS_PER_CALL) -> list[EthTransaction]:
-        """The newest normal transactions sent or received by the address (one call, up to 1,000)."""
+    async def get_address_transactions(self, address: str, limit: int | None = None) -> list[EthTransaction]:
+        """The newest normal transactions sent or received by the address (1,000 rows per call; full pages are followed up to EVM_LIST_PAGES)."""
         return await self._list("txlist", address, limit, self._from_txlist)
 
-    async def get_token_transfers(self, address: str, limit: int = MAX_RECORDS_PER_CALL) -> list[EthTokenTransfer]:
-        """The newest ERC-20 transfers to or from the address (one call, up to 1,000)."""
+    async def get_token_transfers(self, address: str, limit: int | None = None) -> list[EthTokenTransfer]:
+        """The newest ERC-20 transfers to or from the address (1,000 rows per call; full pages are followed up to EVM_LIST_PAGES)."""
         return await self._list("tokentx", address, limit, lambda row, _: EthTokenTransfer(
             tx_hash=row["hash"].lower(), block_number=_int(row.get("blockNumber")),
             block_time=_time(_int(row.get("timeStamp"))), token_contract=row["contractAddress"].lower(),
             token_symbol=_text(row.get("tokenSymbol")), token_decimals=_int(row.get("tokenDecimal")),
             from_address=row["from"].lower(), to_address=row["to"].lower(), value_raw=str(_int(row.get("value")) or 0)))
 
-    async def get_internal_transfers(self, address: str, limit: int = MAX_RECORDS_PER_CALL) -> list[EthInternalTransfer]:
-        """The newest internal ETH transfers (contract traces) touching the address (one call, up to 1,000)."""
+    async def get_internal_transfers(self, address: str, limit: int | None = None) -> list[EthInternalTransfer]:
+        """The newest internal ETH transfers (contract traces) touching the address (1,000 rows per call; full pages are followed up to EVM_LIST_PAGES)."""
         return await self._list("txlistinternal", address, limit, lambda row, _: EthInternalTransfer(
             tx_hash=row["hash"].lower(), block_number=_int(row.get("blockNumber")),
             block_time=_time(_int(row.get("timeStamp"))), from_address=row["from"].lower(),
             to_address=_addr(row.get("to")) or None, contract_created=_addr(row.get("contractAddress")) or None,
             value_wei=str(_int(row.get("value")) or 0), kind=row.get("type") or None, failed=row.get("isError") == "1"))
 
-    async def get_nft_transfers(self, address: str, limit: int = MAX_RECORDS_PER_CALL) -> list[EthNftTransfer]:
-        """The newest ERC-721 and ERC-1155 transfers (two calls, up to 1,000 each), newest first."""
+    async def get_nft_transfers(self, address: str, limit: int | None = None) -> list[EthNftTransfer]:
+        """The newest ERC-721 and ERC-1155 transfers (two lists, 1,000 rows per call, up to EVM_LIST_PAGES pages each), newest first."""
         def nft(standard):
             return lambda row, _: EthNftTransfer(
                 tx_hash=row["hash"].lower(), block_number=_int(row.get("blockNumber")),
@@ -259,7 +280,8 @@ class EtherscanProvider:
                 to_address=row["to"].lower())
         erc721, erc1155 = await asyncio.gather(self._list("tokennfttx", address, limit, nft("ERC-721")),
                                                self._list("token1155tx", address, limit, nft("ERC-1155")))
-        self._nft_complete[address.lower()] = len(erc721) < MAX_RECORDS_PER_CALL and len(erc1155) < MAX_RECORDS_PER_CALL
+        self._nft_complete[address.lower()] = (self._list_complete.get(("tokennfttx", address.lower()), True)
+                                               and self._list_complete.get(("token1155tx", address.lower()), True))
         return sorted(erc721 + erc1155, key=lambda t: t.block_number or 0, reverse=True)
 
     async def get_tx_internal_transfers(self, tx_hash: str) -> list[EthInternalTransfer]:
@@ -283,11 +305,12 @@ class EtherscanProvider:
                     "get_internal_transfers": "txlistinternal", "get_nft_transfers": "tokennfttx"}
 
     def history_complete(self, method: str, address: str, count: int) -> bool:
-        """Each Etherscan list is its own call, so a list is complete when it is under the 1,000 cap
-        (the NFT list joins two calls, ERC-721 and ERC-1155, and is complete when neither hit the cap)."""
+        """A list is complete when its last page came back under 1,000 rows (the NFT list joins two lists,
+        ERC-721 and ERC-1155, and is complete when both are)."""
         if method == "get_nft_transfers":
             return self._nft_complete.get(address.lower(), count < MAX_RECORDS_PER_CALL)
-        return count < MAX_RECORDS_PER_CALL
+        return self._list_complete.get((self.LIST_ACTIONS.get(method, method), address.lower()),
+                                       count < MAX_RECORDS_PER_CALL)
 
     def describe(self, method: str, address: str) -> tuple[str, str]:
         """(source name, key-free URL of the list call) for evidence."""

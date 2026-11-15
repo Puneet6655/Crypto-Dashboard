@@ -11,9 +11,11 @@ source timestamps name the provider that actually answered.
 import uuid
 from datetime import datetime, timezone
 
+from app.config import get_settings
 from app.intelligence.index import IndicatorIndex, get_indicator_index
 from app.intelligence.screening import Screening, screen_bitcoin
 from app.providers.base import BitcoinProvider
+from app.providers.paging import bitcoin_history
 from app.schemas.bitcoin import Provenance, TransactionSummary, format_btc
 from app.schemas.investigation import (
     Evidence,
@@ -219,7 +221,8 @@ async def _investigate_address(request: InvestigationRequest, provider: BitcoinP
                                indicators: IndicatorIndex) -> InvestigationResult:
     address = normalize_address(request.value)
     summary = await provider.get_address_summary(address)
-    transactions = await provider.get_address_transactions(address)
+    pages = get_settings().btc_address_pages
+    transactions, complete = await bitcoin_history(provider, address, pages)
 
     builder = GraphBuilder(summary.network, max_nodes)
     builder.add_node(builder.address_node(address).model_copy(update={"details": {
@@ -267,11 +270,12 @@ async def _investigate_address(request: InvestigationRequest, provider: BitcoinP
             excerpt=f"chain_stats tx_count={summary.confirmed.tx_count}, mempool_stats tx_count={summary.unconfirmed.tx_count}",
         ),
         Evidence(
-            id="e2", source=f"{page_provenance.provider} address transactions (first page)",
+            id="e2", source=f"{page_provenance.provider} address transactions (newest {pages} page(s) of 25)",
             source_url=page_provenance.source_url,
             retrieved_at=page_provenance.retrieved_at,
             method_version=METHOD_VERSION,
-            excerpt=f"{len(transactions)} transactions returned on the first page",
+            excerpt=f"{len(transactions)} transactions returned"
+                    + (" (whole history)" if complete else f" from the newest {pages} page(s); older pages not read"),
         ),
     ]
     screening = screen_bitcoin(indicators, summary.network, address, builder.addresses(),
@@ -295,7 +299,8 @@ async def _investigate_address(request: InvestigationRequest, provider: BitcoinP
         evidence=evidence + screening.evidence + model_evidence,
         source_timestamps={**sources, **screening.source_timestamps},
         limitations=(COMMON_LIMITATIONS if model_result is None else MODEL_SCORED_LIMITATIONS)
-        + ["The graph shows only the first page of transactions; click the address for older pages"] + model_notes,
+        + ([] if complete else [f"The graph shows the newest {len(transactions)} transactions ({pages} pages of 25, "
+                                "set by BTC_ADDRESS_PAGES); click the address for older pages"]) + model_notes,
         explanation=model_result,
         uncertainty={
             "unconfirmed_tx_count": summary.unconfirmed.tx_count,

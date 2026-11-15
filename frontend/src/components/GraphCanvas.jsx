@@ -50,6 +50,36 @@ function toElements(nodes, edges) {
   return { elements, bundleOf };
 }
 
+// When the graph grows (a node was expanded), keep every node where it was and put each new
+// node in a ring around a neighbour that is already placed, so the picture does not jump.
+function grownPositions(nodes, edges, known) {
+  const anchorOf = new Map();
+  for (const e of edges) {
+    if (known.has(e.source) && !known.has(e.target) && !anchorOf.has(e.target)) anchorOf.set(e.target, e.source);
+    if (known.has(e.target) && !known.has(e.source) && !anchorOf.has(e.source)) anchorOf.set(e.source, e.target);
+  }
+  const fresh = new Map(); // anchor -> new node ids around it
+  for (const n of nodes) {
+    if (known.has(n.id)) continue;
+    const anchor = anchorOf.get(n.id) ?? "";
+    if (!fresh.has(anchor)) fresh.set(anchor, []);
+    fresh.get(anchor).push(n.id);
+  }
+  const placed = new Map(known);
+  const xs = [...known.values()].map((p) => p.x);
+  const ys = [...known.values()].map((p) => p.y);
+  const middle = { x: (Math.min(...xs) + Math.max(...xs)) / 2 || 0, y: (Math.min(...ys) + Math.max(...ys)) / 2 || 0 };
+  for (const [anchor, ids] of fresh) {
+    const centre = known.get(anchor) ?? middle;
+    const radius = 90 + 12 * Math.sqrt(ids.length) * 3;
+    ids.forEach((id, i) => {
+      const angle = (2 * Math.PI * i) / ids.length;
+      placed.set(id, { x: centre.x + radius * Math.cos(angle), y: centre.y + radius * Math.sin(angle) });
+    });
+  }
+  return placed;
+}
+
 // "131 × input" when every label starts with the same word, else "131 links".
 function bundleLabel(group) {
   const kinds = new Set(group.map((e) => e.label.split(",")[0]));
@@ -76,6 +106,9 @@ export default function GraphCanvas({
   const bundleOfRef = useRef(new Map());
   const layoutRef = useRef(null); // the layout currently animating, if any
   const firstLayout = useRef(true); // Web3 mode: the first layout of a graph plays the entrance animation
+  const positionsRef = useRef(new Map()); // where each node was drawn, kept across redraws of the same graph
+  const viewRef = useRef({ zoom: 1, pan: { x: 0, y: 0 } }); // and the zoom and pan at that moment
+  const grownRef = useRef(false); // true when this redraw only added nodes (an expansion)
   const [tooltip, setTooltip] = useState(null);
 
   // Cytoscape's event handlers are attached once, so they would keep calling
@@ -96,19 +129,29 @@ export default function GraphCanvas({
   useEffect(() => {
     const { elements, bundleOf } = toElements(nodes, edges);
     bundleOfRef.current = bundleOf;
+    const known = positionsRef.current;
+    const grown = known.size > 0 && nodes.some((n) => known.has(n.id));
+    const placed = grown ? grownPositions(nodes, edges, known) : null;
+    grownRef.current = grown;
     const cy = cytoscape({
       container: containerRef.current,
       elements,
       style: WEB3_DESIGN ? w3Stylesheet(buildStylesheet()) : buildStylesheet(),
-      layout: WEB3_DESIGN ? w3StartLayout : { name: "grid" }, // placeholder; effect 2 runs the real layout
+      // placeholder; effect 2 runs the real layout. After an expansion, start from the old positions.
+      layout: grown ? { name: "preset", positions: (node) => placed.get(node.id()), fit: false }
+        : WEB3_DESIGN ? w3StartLayout : { name: "grid" },
       minZoom: 0.05, // low enough that "fit" can always show a 50-node graph
       maxZoom: 4,
       boxSelectionEnabled: false,
       autounselectify: true, // we track selection ourselves in React state
     });
     cyRef.current = cy;
-    firstLayout.current = true;
-    if (WEB3_DESIGN) w3Hide(cy);
+    if (grown) {
+      cy.viewport({ zoom: viewRef.current.zoom, pan: viewRef.current.pan });
+    } else {
+      firstLayout.current = true;
+      if (WEB3_DESIGN) w3Hide(cy);
+    }
 
     // Click (or tap on a touch screen) a node or a link to select it.
     // A bundle selects its first link; the details panel lists the rest.
@@ -148,13 +191,18 @@ export default function GraphCanvas({
     cy.on("viewport", () => setTooltip(null)); // hide it while panning or zooming
 
     return () => {
-      // Stop a running layout animation first. A stopped "force" layout still finishes on its
-      // next animation frame, so destroy the graph two frames later (leaving the page mid-layout
-      // used to throw "Cannot read properties of null").
+      // Stop a running layout animation first.
       layoutRef.current?.stop();
       cy.stop();
+      // Remember where everything was, so an expansion can redraw the graph without it jumping.
+      positionsRef.current = new Map(cy.nodes().map((n) => [n.id(), { ...n.position() }]));
+      viewRef.current = { zoom: cy.zoom(), pan: { ...cy.pan() } };
       cyRef.current = null;
-      requestAnimationFrame(() => requestAnimationFrame(() => cy.destroy()));
+      // Detach from the page at once (after an expansion the next graph reuses this <div>). Not destroy():
+      // a stopped force layout still runs a last frame, which would hit a destroyed renderer ("Cannot read
+      // properties of null"), and a late destroy() would empty the <div> the new graph now draws in.
+      // Unmounted, late frames go to Cytoscape's do-nothing renderer and the old instance is garbage collected.
+      cy.unmount();
     };
   }, [nodes, edges, cyRef]);
 
@@ -170,9 +218,16 @@ export default function GraphCanvas({
       layoutRef.current = layout;
       return () => layout.stop();
     }
+    // After an expansion the force layout starts from the current positions (randomize: false) and only
+    // settles the new nodes in; other layouts are recomputed as usual.
+    const grown = grownRef.current;
+    grownRef.current = false;
+    const options = grown && layoutName === "cose"
+      ? { ...LAYOUTS.cose.options, randomize: false, numIter: 400, initialTemp: 60 }
+      : LAYOUTS[layoutName].options;
     const layout = cy
       .elements(":visible")
-      .layout({ ...LAYOUTS[layoutName].options, animate: true, animationDuration: 400, fit: true, padding: 40 });
+      .layout({ ...options, animate: true, animationDuration: 400, fit: true, padding: 40 });
     layoutRef.current = layout;
     layout.run();
     return () => layout.stop();
@@ -264,7 +319,7 @@ function describe(el) {
     if (el.data("balance_sats") != null) lines.push(`Balance: ${formatBtc(el.data("balance_sats"))}`);
     if (el.data("total_transferred_sats") != null) lines.push(`Transferred: ${formatBtc(el.data("total_transferred_sats"))}`);
     if (el.data("fee_sats") != null) lines.push(`Fee: ${formatBtc(el.data("fee_sats"))}`);
-    lines.push("Click for details, double-click to zoom, right-click to add to a case");
+    lines.push("Click for details (and Expand), double-click to zoom, right-click to add to a case");
     return { kind: info.label, title: el.data("label"), lines };
   }
   const info = relationInfo(el.data("relation"));

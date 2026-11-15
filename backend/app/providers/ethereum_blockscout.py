@@ -48,9 +48,10 @@ class BlockscoutProvider(EtherscanProvider):
 
     def __init__(self, api_key: str, base_url: str = BLOCKSCOUT_BASE_URL, chain_id: int = 1,
                  timeout_seconds: float = 10, transport: httpx.AsyncBaseTransport | None = None,
-                 min_interval: float = MIN_SECONDS_BETWEEN_CALLS):
+                 min_interval: float = MIN_SECONDS_BETWEEN_CALLS, max_pages: int = 1):
         self.root_url = base_url.rstrip("/")
-        super().__init__(api_key, f"{self.root_url}/v2/api", chain_id, timeout_seconds, transport, min_interval)
+        super().__init__(api_key, f"{self.root_url}/v2/api", chain_id, timeout_seconds, transport, min_interval,
+                         max_pages)
 
     def rpc_url(self) -> str:
         return f"{self.root_url}/{self.chain_id}/json-rpc"

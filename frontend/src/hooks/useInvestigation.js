@@ -2,7 +2,8 @@ import { useRef, useState } from "react";
 import { MODES, compatibleMethods } from "../config/modes.js";
 import { FIXTURE_CASES } from "../data/fixtures.js";
 import { runFixtureInvestigation, validateInput } from "../services/runFixtureInvestigation.js";
-import { startInvestigation } from "../api/client.js";
+import { startInvestigation, streamGraphExpand } from "../api/client.js";
+import { EXPAND_NODE_CAP, EXPAND_PER_NODE, expandableAddress, mergeExpansion } from "../services/expandInvestigationGraph.js";
 
 const FIRST_MODE = MODES[0];
 const firstReadyMethod = (mode, inputType) =>
@@ -30,6 +31,11 @@ export function useInvestigation() {
   // The AbortController of the request in flight. A ref, not state, because
   // changing it should not redraw the screen.
   const requestRef = useRef(null);
+  // "Expand node": the node being expanded, the ones already done, and the last message about it.
+  const [expandingId, setExpandingId] = useState("");
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  const [expandNote, setExpandNote] = useState(null); // { kind: "info" | "warning" | "error", text }
+  const expandRef = useRef(null);
 
   // Merge a change into the form and keep dependent choices valid.
   function handleFormChange(changes) {
@@ -77,6 +83,10 @@ export function useInvestigation() {
       return;
     }
     requestRef.current?.abort(); // a new Start replaces any request still running
+    expandRef.current?.abort();
+    setExpandingId("");
+    setExpandedIds(new Set());
+    setExpandNote(null);
     const controller = new AbortController();
     requestRef.current = controller;
 
@@ -116,6 +126,62 @@ export function useInvestigation() {
     run(request);
   }
 
+  // Fetch the counterparties of one address node and add them to the graph (one hop, streamed).
+  async function expandNode(nodeId) {
+    const target = expandableAddress(result, nodeId);
+    if (!target || expandingId) return;
+    if (result.graph.nodes.length >= EXPAND_NODE_CAP) {
+      setExpandNote({ kind: "warning", text: `The graph already has ${EXPAND_NODE_CAP} nodes, the most this view draws smoothly. Use Advanced graph for bigger graphs.` });
+      return;
+    }
+    const controller = new AbortController();
+    expandRef.current = controller;
+    const investigationId = result.investigation_id;
+    const evidenceId = `ex${expandedIds.size + 1}`;
+    const label = result.graph.nodes.find((n) => n.id === nodeId)?.label ?? target.address;
+    const added = { nodes: new Set(), links: new Set() };
+    const problems = [];
+    let stopped = null;
+    let working = result;
+    setExpandingId(nodeId);
+    setExpandNote({ kind: "info", text: `Expanding ${label}...` });
+    try {
+      await streamGraphExpand({
+        chain: target.chain, addresses: [target.address], hops: 1,
+        max_new_nodes: Math.max(1, EXPAND_NODE_CAP - result.graph.nodes.length), per_node_limit: EXPAND_PER_NODE,
+      }, {
+        signal: controller.signal,
+        onEvent: (event) => {
+          if (event.event === "batch") {
+            // Merge into a local copy (the only writer while this runs), so the count below is exact.
+            working = mergeExpansion(working, event, target, evidenceId, added);
+            const next = working;
+            setResult((old) => (old?.investigation_id === investigationId ? next : old));
+          } else if (event.event === "error" || event.event === "warning") {
+            problems.push(event.message);
+          } else if (event.event === "done") {
+            stopped = event.stopped;
+          }
+        },
+      });
+      if (controller.signal.aborted) return;
+      setExpandedIds((old) => new Set(old).add(nodeId));
+      const text = problems.length ? problems.join(" ")
+        : added.nodes.size || added.links.size
+          ? `Added ${added.nodes.size} node(s) and ${added.links.size} link(s) around ${label}.`
+            + (stopped === "node_limit" ? " Stopped at the node limit." : "")
+          : `Nothing new: every counterparty of ${label} is already in the graph.`;
+      setExpandNote({ kind: problems.length ? "warning" : "info", text });
+    } catch (err) {
+      if (!controller.signal.aborted) setExpandNote({ kind: "error", text: err.message });
+    } finally {
+      if (expandRef.current === controller) {
+        expandRef.current = null;
+        setExpandingId("");
+      }
+    }
+  }
+
   function handleCancel() {
     requestRef.current?.abort();
     requestRef.current = null;
@@ -130,6 +196,7 @@ export function useInvestigation() {
 
   return {
     form, status, result, error, selectedId, highlightedEvidence, activeTab, startedAt,
+    expandingId, expandedIds, expandNote, canExpand: (id) => Boolean(expandableAddress(result, id)), expandNode,
     setSelectedId, setActiveTab,
     handleFormChange, handleCaseChange, handleStart, handleCancel, handleEvidenceClick, investigateLive,
   };

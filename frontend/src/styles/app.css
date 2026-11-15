@@ -545,3 +545,9 @@ button.link[data-case-type] { cursor: pointer; }
 .usage-day > span { display: block; width: 100%; background: var(--accent); border-radius: 3px; }
 .usage-row details table { margin-top: 6px; }
 .compact-table td, .compact-table th { padding: 4px 8px; }
+
+/* Investigate graph: "Expand node" button and its status line */
+.graph-toolbar .expand-button { padding: 6px 12px; font-size: 13px; margin-left: auto; }
+.expand-note { margin: 4px 0 6px; padding: 6px 10px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); }
+.expand-note.expand-warning { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.expand-note.expand-error { background: var(--danger-soft); color: var(--danger); border-color: transparent; }

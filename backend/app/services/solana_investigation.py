@@ -13,6 +13,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from app.config import get_settings
 from app.intelligence.index import IndicatorIndex
 from app.intelligence.screening import screen_addresses
 from app.providers.solana_alchemy import LAMPORTS_PER_SOL, MAX_SIGNATURES, SYSTEM_PROGRAM
@@ -37,7 +38,7 @@ from app.services.investigation_service import (
 )
 from app.validation import is_solana_address, is_solana_signature
 
-TX_DETAIL_LIMIT = 40  # transactions read in full per address investigation (40 CU each)
+TX_DETAIL_LIMIT = 60  # default only: SOLANA_TX_DETAIL_LIMIT sets transactions read in full (40 CU each)
 NO_KEY = "Solana lookups are off: they need ALCHEMY_API_KEY and ALCHEMY_ENABLED=true in backend/.env."
 CHAIN_LIMITATIONS = [
     "Checked on Solana mainnet only",
@@ -142,7 +143,8 @@ async def _investigate_address(request, address: str, provider, max_nodes: int,
                                indicators: IndicatorIndex) -> InvestigationResult:
     summary, signatures = await asyncio.gather(provider.get_address_summary(address),
                                                provider.get_signatures(address))
-    detailed = [tx for tx in await provider.get_transactions([s.signature for s in signatures[:TX_DETAIL_LIMIT]])
+    read_limit = get_settings().solana_tx_detail_limit
+    detailed = [tx for tx in await provider.get_transactions([s.signature for s in signatures[:read_limit]])
                 if tx is not None]
     sid = summary.entity_id
     network = summary.network
@@ -170,7 +172,7 @@ async def _investigate_address(request, address: str, provider, max_nodes: int,
                  retrieved_at=p.retrieved_at, method_version=METHOD_VERSION,
                  excerpt=f"{len(signatures):,} signatures returned (at most {MAX_SIGNATURES:,} per call)"),
         Evidence(id="e3", source=f"{p.provider} getTransaction (jsonParsed)",
-                 source_url=f"{provider.base_url} getTransaction, newest {TX_DETAIL_LIMIT} signatures",
+                 source_url=f"{provider.base_url} getTransaction, newest {read_limit} signatures",
                  retrieved_at=p.retrieved_at, method_version=METHOD_VERSION,
                  excerpt=f"{len(detailed)} transactions read in full"),
     ]
@@ -225,7 +227,7 @@ async def _investigate_address(request, address: str, provider, max_nodes: int,
     for f in findings:
         f.entity_ids = [i for i in f.entity_ids if i in in_graph] or [sid]
 
-    limits = [f"Amounts and counterparties come from the newest {TX_DETAIL_LIMIT} transactions read in full; "
+    limits = [f"Amounts and counterparties come from the newest {read_limit} transactions read in full; "
               "counts and dates use all fetched signatures",
               f"The graph shows up to {max_nodes} nodes: sanctioned counterparties first, then the newest activity"]
     if not complete:

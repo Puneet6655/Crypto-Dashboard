@@ -4,7 +4,8 @@ Same result shape as the Bitcoin investigations: observations, a graph, evidence
 (key-free) Etherscan URLs, and exact-match checks against the OFAC list of sanctioned
 Ethereum-format addresses.
 
-Each list call asks for as much as Etherscan returns in one go (1,000 records), for normal
+Each list call asks for as much as Etherscan returns in one go (1,000 records), and full pages are
+followed up to EVM_LIST_PAGES (default 3), for normal
 transactions, ERC-20 transfers, internal transfers and NFT transfers. The calls run together,
 spaced to stay within 3 per second. Findings and sanctions screening use everything fetched; the
 graph shows sanctioned counterparties first, then the newest activity, up to the node limit.
@@ -14,6 +15,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from app.config import get_settings
 from app.intelligence.index import IndicatorIndex
 from app.intelligence.screening import screen_addresses
 from app.providers.base import ProviderError
@@ -226,7 +228,8 @@ async def _investigate_address(request: InvestigationRequest, chain: str, provid
 
     complete = all(full.values())
     limits = ([] if complete else
-              [f"Some lists stopped at the {MAX:,} records one call returns, so older activity is not included"])
+              [f"Some lists stopped after {get_settings().evm_list_pages} page(s) of {MAX:,} records (EVM_LIST_PAGES), "
+               "so older activity is not included"])
     if any(t.status == "unknown" for t in txs):
         limits.append("Transactions listed by alchemy.com carry no fee, success flag or called function "
                       "(open one transaction for its receipt)")
@@ -249,7 +252,8 @@ def _address_evidence(provider, address, summary, txs, tokens, internal, nfts) -
         name, url = provider.describe(method, address)
         sources.setdefault(name, p.retrieved_at)
         return Evidence(id=id_, source=f"{name} {what}", source_url=url, retrieved_at=p.retrieved_at,
-                        method_version=METHOD_VERSION, excerpt=f"{n:,} records returned (at most {MAX:,} per call)")
+                        method_version=METHOD_VERSION, excerpt=f"{n:,} records returned ({MAX:,} per call, "
+                                                f"up to {get_settings().evm_list_pages} call(s) per list)")
 
     evidence = [
         Evidence(id="e1", source=f"{p.provider} balance and nonce", source_url=p.source_url, retrieved_at=p.retrieved_at,

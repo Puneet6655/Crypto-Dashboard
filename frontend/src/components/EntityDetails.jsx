@@ -8,7 +8,7 @@ import { formatBtc, isSatsKey } from "../utils/bitcoinAmount.js";
 
 // Right column: details for whatever the analyst clicked, a node or a link.
 // Every related item is a button, so you can walk the graph from here too.
-export default function EntityDetails({ result, selectedId, onSelect, onEvidenceClick }) {
+export default function EntityDetails({ result, selectedId, onSelect, onEvidenceClick, expand }) {
   const node = result?.graph.nodes.find((n) => n.id === selectedId);
   const edge = !node ? result?.graph.edges.find((e) => e.id === selectedId) : null;
 
@@ -18,7 +18,7 @@ export default function EntityDetails({ result, selectedId, onSelect, onEvidence
   return (
     <aside className="card details" aria-label="Selected entity">
       {node ? (
-        <NodeDetails node={node} result={result} onSelect={onSelect} onEvidenceClick={onEvidenceClick} />
+        <NodeDetails node={node} result={result} onSelect={onSelect} onEvidenceClick={onEvidenceClick} expand={expand} />
       ) : (
         <EdgeDetails edge={edge} result={result} onSelect={onSelect} onEvidenceClick={onEvidenceClick} />
       )}
@@ -26,7 +26,7 @@ export default function EntityDetails({ result, selectedId, onSelect, onEvidence
   );
 }
 
-function NodeDetails({ node, result, onSelect, onEvidenceClick }) {
+function NodeDetails({ node, result, onSelect, onEvidenceClick, expand }) {
   const info = nodeTypeInfo(node.type);
   const { nodes, edges } = result.graph;
   const labelOf = (id) => nodes.find((n) => n.id === id)?.label ?? id;
@@ -57,6 +57,17 @@ function NodeDetails({ node, result, onSelect, onEvidenceClick }) {
       <CopyableId id={node.id} />
       <div className="details-actions">
         <AddToCaseButton item={itemFromNode(node)} />
+        {expand?.canExpand(node.id) && (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => expand.expandNode(node.id)}
+            disabled={Boolean(expand.expandingId)}
+            title="Fetch this address's counterparties and add them to the graph"
+          >
+            {expand.expandingId === node.id ? "Expanding..." : expand.expandedIds.has(node.id) ? "Expand again" : "Expand node"}
+          </button>
+        )}
       </div>
 
       <dl>

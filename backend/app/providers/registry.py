@@ -49,7 +49,7 @@ def get_ethereum_provider(settings: Settings = Depends(get_settings)) -> Failove
     return shared_evm_provider("ethereum", settings.etherscan_api_key, settings.etherscan_base_url,
                                settings.eth_chain_id, alchemy_key, settings.alchemy_endpoint,
                                settings.http_timeout_seconds, settings.blockscout_api_key,
-                               settings.blockscout_base_url)
+                               settings.blockscout_base_url, settings.evm_list_pages)
 
 
 def get_base_provider(settings: Settings = Depends(get_settings)) -> FailoverEvmProvider | None:
@@ -58,26 +58,26 @@ def get_base_provider(settings: Settings = Depends(get_settings)) -> FailoverEvm
     if not settings.alchemy_api_key or not settings.alchemy_enabled:
         return None
     return shared_evm_provider("base", None, None, None, settings.alchemy_api_key, None,
-                               settings.http_timeout_seconds)
+                               settings.http_timeout_seconds, pages=settings.evm_list_pages)
 
 
 @lru_cache(maxsize=4)
 def shared_evm_provider(chain: str, etherscan_key: str | None, etherscan_url: str | None, chain_id: int | None,
                         alchemy_key: str | None, alchemy_endpoint: str | None,
                         timeout_seconds: float, blockscout_key: str | None = None,
-                        blockscout_url: str | None = None) -> FailoverEvmProvider:
+                        blockscout_url: str | None = None, pages: int = 1) -> FailoverEvmProvider:
     """One failover chain per network for the whole process, so pacing, cooldowns and caches are shared."""
     sources = []
     if etherscan_key:
-        sources.append(EtherscanProvider(etherscan_key, etherscan_url, chain_id, timeout_seconds))
+        sources.append(EtherscanProvider(etherscan_key, etherscan_url, chain_id, timeout_seconds, max_pages=pages))
     if blockscout_key and chain == "ethereum":
         sources.append(BlockscoutProvider(blockscout_key, blockscout_url or "https://api.blockscout.com",
-                                          chain_id or 1, timeout_seconds))
+                                          chain_id or 1, timeout_seconds, max_pages=pages))
     if alchemy_key:
         # Use the pasted endpoint only when it is for this network; otherwise build it from the key.
         slug = "eth-mainnet" if chain == "ethereum" else "base-mainnet"
         url = alchemy_endpoint if alchemy_endpoint and f"//{slug}." in alchemy_endpoint else None
-        sources.append(AlchemyProvider(alchemy_key, chain, timeout_seconds, url=url))
+        sources.append(AlchemyProvider(alchemy_key, chain, timeout_seconds, url=url, max_pages=pages))
     label = {"ethereum": "Ethereum", "base": "Base"}[chain]
     return FailoverEvmProvider(sources, chain=chain, label=label)
 

@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
             from app.providers.registry import shared_evm_provider
 
             base_evm = shared_evm_provider("base", None, None, None, settings.alchemy_api_key, None,
-                                           settings.http_timeout_seconds)
+                                           settings.http_timeout_seconds, pages=settings.evm_list_pages)
             base_src = next((s for s in base_evm.sources if isinstance(s, AlchemyProvider)), None)
             if base_src is not None:
                 pollers["base"] = PollingWatcher(BASE, base_fetch(base_src), make_chain_loader(lambda: app.state.store, "base"))

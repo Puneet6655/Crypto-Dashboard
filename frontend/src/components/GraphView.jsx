@@ -6,7 +6,7 @@ import W3Scanner, { W3Idle } from "../w3/W3Scanner.jsx";
 
 // Centre column. Shows the idle, loading, error, cancelled and empty states,
 // or the interactive graph once a result has arrived.
-export default function GraphView({ status, error, result, selectedId, onSelect, onCancel, startedAt, methodLabel }) {
+export default function GraphView({ status, error, result, selectedId, onSelect, onCancel, startedAt, methodLabel, expand }) {
   if (status === "idle") {
     return (
       <section className="card graph state">
@@ -35,7 +35,7 @@ export default function GraphView({ status, error, result, selectedId, onSelect,
   // The key makes React start GraphExplorer fresh (filters, search, layout)
   // for every new investigation, instead of carrying the old choices over.
   return (
-    <GraphExplorer key={result.investigation_id} result={result} selectedId={selectedId} onSelect={onSelect} />
+    <GraphExplorer key={result.investigation_id} result={result} selectedId={selectedId} onSelect={onSelect} expand={expand} />
   );
 }
 
@@ -61,7 +61,7 @@ function LoadingState({ startedAt, methodLabel, onCancel }) {
   );
 }
 
-function GraphExplorer({ result, selectedId, onSelect }) {
+function GraphExplorer({ result, selectedId, onSelect, expand }) {
   const { nodes, edges } = result.graph;
   const cyRef = useRef(null); // GraphCanvas puts the Cytoscape instance here
   // Small transaction graphs read best as a top-to-bottom flow; bigger ones
@@ -152,7 +152,23 @@ function GraphExplorer({ result, selectedId, onSelect }) {
           <button type="button" className="secondary" onClick={() => setLayoutRun((n) => n + 1)} title="Run the layout again">Re-arrange</button>
           <button type="button" className="secondary" onClick={savePng} title="Download the graph as an image">PNG</button>
         </div>
+        {expand && result.data_mode === "live" && (
+          <button
+            type="button"
+            className="primary expand-button"
+            onClick={() => expand.expandNode(selectedId)}
+            disabled={!expand.canExpand(selectedId) || Boolean(expand.expandingId)}
+            title={expand.canExpand(selectedId)
+              ? "Fetch this address's counterparties and add them to the graph"
+              : "Select an address node first, then press Expand"}
+          >
+            {expand.expandingId ? "Expanding..." : expand.expandedIds.has(selectedId) ? "Expand again" : "Expand node"}
+          </button>
+        )}
       </div>
+      {expand?.expandNote && (
+        <div className={`small expand-note expand-${expand.expandNote.kind}`} role="status">{expand.expandNote.text}</div>
+      )}
       {search.trim() && (
         <div className="small muted search-result">
           {matchIds.length ? `${matchIds.length} match(es), press Enter to jump to the first` : "No matching nodes"}
@@ -216,7 +232,7 @@ function GraphExplorer({ result, selectedId, onSelect }) {
       </div>
       <p className="small muted hint">
         Scroll to zoom, drag the background to pan, drag a node to move it, double-click a node to zoom in on it,
-        Esc to clear the selection.
+        Esc to clear the selection.{result.data_mode === "live" && " Select an address and press Expand node to add its counterparties."}
       </p>
 
       {/* The same links as a plain list, for keyboard and screen reader users. */}

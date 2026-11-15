@@ -4,10 +4,11 @@ How one request works (POST /api/graph/expand):
 
 1. The browser names a chain, the addresses to expand, how many hops (1 or 2) and how many new
    nodes it still has room for (its node cap minus what it already shows).
-2. Each address is fetched with ONE list call per kind of history (Bitcoin: the newest page of
-   transactions; Ethereum/Base: normal transactions and token transfers; Solana: the signature list
-   plus the newest few transactions), then turned into counterparties: who it paid and who paid it,
-   with totals per counterparty.
+2. Each address is fetched with list calls that ask for the provider's largest page (Bitcoin: 25
+   transactions per page, the server's fixed size, following up to BTC_ADDRESS_PAGES pages; Ethereum/Base:
+   1,000 normal transactions and 1,000 token transfers per call, following full pages up to EVM_LIST_PAGES;
+   Solana: 1,000 signatures plus the newest GRAPH_SOLANA_TXS transactions read in full), then turned into
+   counterparties: who it paid and who paid it, with totals per counterparty.
 3. Counterparties are grouped so the graph stays readable at thousands of nodes:
    - dust: tiny or zero-value transfers (address poisoning, spam airdrops) become one summary node;
    - known exchange addresses (Dune's community cex.addresses labels, app/intelligence/cex_labels.py)
@@ -46,6 +47,7 @@ from app.intelligence.index import IndicatorIndex
 from app.intelligence.screening import CHECKS
 from app.providers.base import ProviderError
 from app.providers.failover import _MISSING, TTLCache
+from app.providers.paging import bitcoin_history
 from app.validation import is_bitcoin_address, is_ethereum_address, is_solana_address, normalize_address
 
 log = logging.getLogger("app.graph")
@@ -65,8 +67,8 @@ HUB_MIN_TXS = {"bitcoin": 25, "ethereum": 300, "base": 300, "solana": 300}
 HUB_WINDOW_SECONDS = 86_400
 HUB_TOP = 10  # counterparties shown for a hub; the rest go into "+N more"
 MAX_MEMBERS = 2000  # members carried inside one summary node
-SOLANA_TXS_READ = 15  # newest Solana transactions read in full per address (40 CU each)
-ALCHEMY_CU = {"evm_list_pair": 240, "solana_call": 40}
+SOLANA_TXS_READ = 25  # default newest Solana transactions read in full per address (GRAPH_SOLANA_TXS; 40 CU each)
+ALCHEMY_CU = {"evm_list_pair": 240, "transfer_call": 120, "solana_call": 40}
 CACHE_TTL = 600.0
 LAMPORTS = Decimal(10**9)
 WEI = Decimal(10**18)
@@ -176,8 +178,8 @@ class Budget:
                 "alchemy_cu_remaining": self.remaining}
 
 
-async def fetch_bitcoin(provider, address: str) -> Neighbors:
-    txs = await provider.get_address_transactions(address)
+async def fetch_bitcoin(provider, address: str, pages: int = 1, pace=None) -> Neighbors:
+    txs, complete = await bitcoin_history(provider, address, pages, pace)
     table: dict[str, Counterparty] = {}
     times = []
     for tx in txs:
@@ -208,8 +210,9 @@ async def fetch_bitcoin(provider, address: str) -> Neighbors:
                 cp.seen(when)
     source = getattr(provider, "answered_by", {}).get(("txs", address, None), getattr(provider, "name", "bitcoin"))
     note = None
-    if len(txs) >= 25:
-        note = f"Built from the newest {len(txs)} transactions (one page); older history is not included."
+    if not complete:
+        note = (f"Built from the newest {len(txs)} transactions ({pages} page(s) of 25); "
+                "older history is not included.")
     return Neighbors("bitcoin", address, table, len(txs), source, times, note)
 
 
@@ -227,7 +230,10 @@ async def fetch_evm(provider, address: str, chain: str) -> Neighbors:
     uncached = [k for k in keys if provider.cache.get(k) is _MISSING]
     txs, tokens = await asyncio.gather(provider.get_address_transactions(address),
                                        provider.get_token_transfers(address))
-    cu = sum(ALCHEMY_CU["evm_list_pair"] for k in uncached if provider.answered_by.get(k) == "alchemy.com")
+    alchemy = next((s for s in getattr(provider, "sources", []) if s.name == "alchemy.com"), None)
+    groups = {"get_address_transactions": "eth", "get_token_transfers": "tokens"}
+    cu = sum(ALCHEMY_CU["transfer_call"] * (getattr(alchemy, "calls_made", {}).get((address, groups[k[0]])) or 2)
+             for k in uncached if provider.answered_by.get(k) == "alchemy.com")
     table: dict[str, Counterparty] = {}
     times = []
     for tx in txs:
@@ -263,16 +269,18 @@ async def fetch_evm(provider, address: str, chain: str) -> Neighbors:
         cp.seen(t.block_time)
     sources = {provider.answered_by.get(k) for k in keys} - {None}
     note = None
-    if max(len(txs), len(tokens)) >= 1000:
-        note = "Built from the newest 1,000 records of each kind; older history is not included."
+    if not all(provider.history_complete(k[0], address, n) if hasattr(provider, "history_complete") else n < 1000
+               for k, n in zip(keys, (len(txs), len(tokens)))):
+        note = (f"Built from the newest {len(txs):,} transactions and {len(tokens):,} token transfers "
+                "(1,000 per call); older history is not included.")
     return Neighbors(chain, address, table, len(txs) + len(tokens), ", ".join(sorted(sources)) or provider.label,
                      times, note, cu)
 
 
-async def fetch_solana(provider, address: str) -> Neighbors:
+async def fetch_solana(provider, address: str, txs_read: int = SOLANA_TXS_READ) -> Neighbors:
     cu = 0 if provider.cache.get(("signatures", address, 1000)) is not _MISSING else ALCHEMY_CU["solana_call"]
     signatures = await provider.get_signatures(address)
-    newest = [s.signature for s in signatures if not s.failed][:SOLANA_TXS_READ]
+    newest = [s.signature for s in signatures if not s.failed][:txs_read]
     cu += sum(ALCHEMY_CU["solana_call"] for sig in newest if provider.cache.get(("tx", sig)) is _MISSING)
     txs = [tx for tx in await provider.get_transactions(newest) if tx is not None]
     table: dict[str, Counterparty] = {}
@@ -306,7 +314,8 @@ async def fetch_solana(provider, address: str) -> Neighbors:
 class GraphExpander:
     """One per process, so the cache, pacing and Alchemy allowance are shared by every request."""
 
-    def __init__(self, daily_cu: int):
+    def __init__(self, daily_cu: int, btc_pages: int = 1, evm_pages: int = 1, solana_txs: int = SOLANA_TXS_READ):
+        self.btc_pages, self.evm_pages, self.solana_txs = btc_pages, evm_pages, solana_txs
         self.cache = TTLCache(max_entries=20_000)
         self.inflight: dict[tuple, asyncio.Future] = {}
         self.budget = Budget(daily_cu)
@@ -317,9 +326,10 @@ class GraphExpander:
 
     def alchemy_estimate(self, chain: str, provider) -> int:
         if chain == "solana":
-            return ALCHEMY_CU["solana_call"] * (1 + SOLANA_TXS_READ)
+            return ALCHEMY_CU["solana_call"] * (1 + self.solana_txs)
         if chain in ("ethereum", "base") and _evm_will_use_alchemy(provider):
-            return 2 * ALCHEMY_CU["evm_list_pair"]
+            # Worst case: both groups (ETH, tokens), both directions, every page full.
+            return 4 * ALCHEMY_CU["transfer_call"] * self.evm_pages
         return 0
 
     async def _pace(self, chain: str) -> None:
@@ -350,9 +360,9 @@ class GraphExpander:
             async with self.semaphores[chain]:
                 await self._pace(chain)
                 if chain == "bitcoin":
-                    result = await fetch_bitcoin(provider, address)
+                    result = await fetch_bitcoin(provider, address, self.btc_pages, lambda: self._pace(chain))
                 elif chain == "solana":
-                    result = await fetch_solana(provider, address)
+                    result = await fetch_solana(provider, address, self.solana_txs)
                 else:
                     result = await fetch_evm(provider, address, chain)
             self.budget.spend(result.cu_spent)
@@ -382,10 +392,13 @@ class BudgetExhausted(Exception):
 _expander: GraphExpander | None = None
 
 
-def get_expander(daily_cu: int) -> GraphExpander:
+def get_expander(daily_cu: int, btc_pages: int = 1, evm_pages: int = 1,
+                 solana_txs: int = SOLANA_TXS_READ) -> GraphExpander:
     global _expander
-    if _expander is None or _expander.budget.daily_cu != daily_cu:
-        _expander = GraphExpander(daily_cu)
+    wanted = (daily_cu, btc_pages, evm_pages, solana_txs)
+    if _expander is None or (_expander.budget.daily_cu, _expander.btc_pages, _expander.evm_pages,
+                             _expander.solana_txs) != wanted:
+        _expander = GraphExpander(*wanted)
     return _expander
 
 

@@ -53,13 +53,14 @@ export default function InvestigatePage({ investigation: inv }) {
           onCancel={inv.handleCancel}
           startedAt={inv.startedAt}
           methodLabel={METHODS.find((m) => m.id === inv.form.method)?.label ?? inv.form.method}
+          expand={inv}
         />
         {WEB3_DESIGN ? (
           // Web3 mode: score ring on top, and the details slide in fresh for each selection.
           <div className="w3-side">
             {inv.status === "done" && <W3RiskGauge key={result?.investigation_id} result={result} />}
             <div key={inv.selectedId || "none"} className="w3-slide-in">
-              <EntityDetails result={result} selectedId={inv.selectedId} onSelect={inv.setSelectedId} onEvidenceClick={inv.handleEvidenceClick} />
+              <EntityDetails result={result} selectedId={inv.selectedId} onSelect={inv.setSelectedId} onEvidenceClick={inv.handleEvidenceClick} expand={inv} />
             </div>
           </div>
         ) : (
@@ -68,6 +69,7 @@ export default function InvestigatePage({ investigation: inv }) {
             selectedId={inv.selectedId}
             onSelect={inv.setSelectedId}
             onEvidenceClick={inv.handleEvidenceClick}
+            expand={inv}
           />
         )}
       </div>
