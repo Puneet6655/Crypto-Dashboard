@@ -41,3 +41,8 @@ models-deploy.zip
 !backend/models/xgboost__v2_exp.joblib
 !backend/models/xgboost__v2_exp_hops.joblib
 !backend/models/xgboost__alert_hops.joblib
+
+# Reports, weekly updates and handover guides are offline only (not on GitHub)
+backend/reports/
+docs/HANDOVER_GUIDE.*
+docs/weekly-update-*
