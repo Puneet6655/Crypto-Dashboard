@@ -31,6 +31,7 @@ log = logging.getLogger("app.x402")
 
 WATCH_SPACING = 20.0       # seconds between two watchlist calls
 WATCH_MIN_ROUND = 300.0    # a full watchlist round takes at least this long
+WATCH_MIN_ROUND_ALCHEMY = 900.0  # ... and this long when lookups land on Alchemy (about 320 CU per address)
 NETWORK_EVERY = 60.0       # seconds between CDP queries
 NETWORK_LOOKBACK = timedelta(minutes=10)  # first CDP query looks back this far
 
@@ -87,6 +88,7 @@ class X402Monitor:
         self.last_error = None
         self.last_error_at = None
         self.network_error = None
+        self.network_rows = 0
 
     @classmethod
     def from_env(cls, snapshot: Snapshot) -> "X402Monitor":
@@ -94,7 +96,8 @@ class X402Monitor:
         from app.x402.cdp import CdpSqlClient
 
         extra = [a.strip() for a in (os.getenv("X402_WATCH_EXTRA") or "").split(",") if a.strip()]
-        return cls(snapshot, BaseX402Reader.from_env(snapshot), CdpSqlClient.from_env(), get_indicator_index,
+        cdp = CdpSqlClient.from_env()
+        return cls(snapshot, BaseX402Reader.from_env(snapshot, cdp=cdp), cdp, get_indicator_index,
                    int(os.getenv("X402_WATCH_COUNT") or 10), extra, os.getenv("X402_ALERT_MIN_SEVERITY") or "medium")
 
     @staticmethod
@@ -111,11 +114,13 @@ class X402Monitor:
         return list(reversed(self.feed))[:limit]
 
     def round_seconds(self) -> float:
-        return max(WATCH_MIN_ROUND, len(self.watch) * WATCH_SPACING)
+        floor = WATCH_MIN_ROUND_ALCHEMY if self.reader.costly() else WATCH_MIN_ROUND
+        return max(floor, len(self.watch) * WATCH_SPACING)
 
     def status(self) -> dict:
         mode = "network + watchlist" if self.cdp else "watchlist"
-        source = ("Coinbase CDP SQL API + " if self.cdp else "") + self.reader.explorer_label()
+        source = ("Coinbase CDP SQL API" if self.cdp else
+                  "Alchemy (Blockscout refused)" if self.reader.blockscout_blocked() else self.reader.explorer_label())
         return {
             "enabled": True, "chain": "x402", "source": source, "mode": mode,
             "connected": self.last_round_at is not None and not (self.last_error and self.last_error_at
@@ -126,7 +131,7 @@ class X402Monitor:
             "round_seconds": round(self.round_seconds()),
             "last_round_at": self.last_round_at, "last_event_at": self.last_event_at,
             "last_error": self.last_error, "last_error_at": self.last_error_at, "paused": [],
-            "network": bool(self.cdp), "network_error": self.network_error, "last_network_at": self.last_network_at,
+            "network": bool(self.cdp), "network_error": self.network_error, "network_last_rows": self.network_rows, "last_network_at": self.last_network_at,
             "payments_seen": self.payments_seen, "volume_usdc": round(self.volume, 2),
             "watchlist": [{"address": a, "reasons": r} for a, r in self.watch.items()],
         }
@@ -224,6 +229,7 @@ class X402Monitor:
             return 0
         self.network_error = None
         self.last_network_at = _now()
+        self.network_rows = len(payments)
         made = 0
         for p in payments:
             if self.handle(p):

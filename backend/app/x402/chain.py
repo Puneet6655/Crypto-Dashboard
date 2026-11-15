@@ -1,9 +1,13 @@
 """Reading x402 payments on Base from free sources.
 
 Order of sources:
+  0. Coinbase CDP SQL API, when CDP_API_KEY_ID/SECRET are set (app/x402/cdp.py): address transfers come with
+     the transaction sender, so no extra lookups and no Alchemy compute units.
   1. Blockscout's Base explorer API. With BLOCKSCOUT_API_KEY it uses the PRO API (api.blockscout.com/8453/...);
      without a key the public explorer (base.blockscout.com), which needs browser-like headers and is rate limited.
-     This is how x402analysis finds clients and funders, and it costs no Alchemy compute units.
+     This is how x402analysis finds clients and funders, and it costs no Alchemy compute units. Since late 2026 the
+     PRO API wants a paid plan for Base (HTTP 402) and the public explorer sits behind a bot check (HTTP 403); after
+     either answer Blockscout is skipped for BLOCKSCOUT_RETRY seconds.
   2. Alchemy (ALCHEMY_API_KEY + ALCHEMY_ENABLED) as a backup: eth_getTransactionByHash + receipt (about 40 CU)
      for a transaction, alchemy_getAssetTransfers on USDC (120 CU) for an address.
 
@@ -30,6 +34,11 @@ PUBLIC_EXPLORER = "https://base.blockscout.com"
 PRO_API = "https://api.blockscout.com/8453"
 BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
               "Chrome/130 Safari/537.36")
+
+
+BLOCKSCOUT_RETRY = 3600.0   # after a 402/403, leave Blockscout alone this long
+ADDRESS_LOOKBACK_DAYS = 7   # how far back a CDP address query looks
+SENDER_CACHE = 5000         # transaction senders remembered (they never change)
 
 
 class ChainError(Exception):
@@ -65,8 +74,9 @@ class BaseX402Reader:
 
     def __init__(self, snapshot: Snapshot, blockscout_key: str | None = None, alchemy_key: str | None = None,
                  transport: httpx.AsyncBaseTransport | None = None, timeout: float = 20.0,
-                 min_interval: float = 0.25):
+                 min_interval: float = 0.25, cdp=None):
         self.snap = snapshot
+        self.cdp = cdp
         self.blockscout_key = blockscout_key
         self.alchemy_key = alchemy_key
         self.transport = transport
@@ -74,16 +84,28 @@ class BaseX402Reader:
         self.min_interval = min_interval
         self._last = 0.0
         self._lock = asyncio.Lock()
-        self.calls = {"blockscout": 0, "alchemy": 0}
+        self.calls = {"blockscout": 0, "alchemy": 0}  # CDP queries are counted on the CDP client
         self.last_source: str | None = None
+        self._blockscout_down = False
+        self._blockscout_blocked_until = 0.0
+        self._senders: dict[str, str | None] = {}
 
     @classmethod
-    def from_env(cls, snapshot: Snapshot) -> "BaseX402Reader":
+    def from_env(cls, snapshot: Snapshot, cdp=None) -> "BaseX402Reader":
         from app.config import get_settings
+        from app.x402.cdp import CdpSqlClient
 
         s = get_settings()
         alchemy = s.alchemy_api_key if s.alchemy_enabled else None
-        return cls(snapshot, os.getenv("BLOCKSCOUT_API_KEY") or None, alchemy)
+        return cls(snapshot, os.getenv("BLOCKSCOUT_API_KEY") or None, alchemy,
+                   cdp=cdp if cdp is not None else CdpSqlClient.from_env())
+
+    def blockscout_blocked(self) -> bool:
+        return time.monotonic() < self._blockscout_blocked_until
+
+    def costly(self) -> bool:
+        """True when watchlist lookups would land on Alchemy (no CDP, Blockscout unusable)."""
+        return self.cdp is None and (self.blockscout_blocked() or not self.blockscout_key)
 
     # ---- HTTP -------------------------------------------------------------------------------
 
@@ -104,6 +126,8 @@ class BaseX402Reader:
         return f"{PRO_API}/api/v2{path}" if self.blockscout_key else f"{PUBLIC_EXPLORER}/api/v2{path}"
 
     async def _blockscout(self, path: str, params: dict | None = None) -> dict:
+        if self.blockscout_blocked():
+            raise ChainError("Blockscout skipped (it refused recently: paid plan or bot check).")
         await self._pace()
         query = dict(params or {})
         headers = {"Accept": "application/json"}
@@ -116,6 +140,8 @@ class BaseX402Reader:
             r = await client.get(self.explorer_url(path), params=query, headers=headers)
         if r.status_code == 404:
             raise ChainError("Blockscout does not know that transaction or address yet.")
+        if r.status_code in (401, 402, 403, 429):
+            self._blockscout_blocked_until = time.monotonic() + BLOCKSCOUT_RETRY
         if r.status_code >= 400:
             raise ChainError(f"Blockscout answered HTTP {r.status_code}")
         try:
@@ -152,8 +178,11 @@ class BaseX402Reader:
                        gasless=is_gasless)
 
     def is_x402(self, p: Payment) -> bool:
-        """Known facilitator sent it; or a gasless USDC transfer to a known x402 server."""
+        """Known facilitator sent it; a known x402 server settled it itself (self-hosted facilitator, e.g.
+        Bitrefill); or a gasless USDC transfer to a known x402 server."""
         if p.facilitator and self.snap.facilitator(p.facilitator):
+            return True
+        if p.facilitator and p.facilitator == p.pay_to and p.payer != p.pay_to and self.snap.server(p.pay_to):
             return True
         return bool(p.gasless and self.snap.server(p.pay_to))
 
@@ -224,11 +253,17 @@ class BaseX402Reader:
         looked up for gasless transfers only, at most 10 per call."""
         address = norm(address)
         errors = []
-        try:
-            out = await self._address_blockscout(address, direction, limit)
-        except (ChainError, httpx.HTTPError) as exc:
-            errors.append(f"Blockscout: {exc}")
-            out = None
+        out = None
+        if self.cdp is not None:
+            try:
+                out = await self._address_cdp(address, direction, limit)
+            except Exception as exc:  # CdpError, HTTP errors: fall through to the next source
+                errors.append(f"CDP: {exc}")
+        if out is None and not self.blockscout_blocked():
+            try:
+                out = await self._address_blockscout(address, direction, limit)
+            except (ChainError, httpx.HTTPError) as exc:
+                errors.append(f"Blockscout: {exc}")
         if out is None and self.alchemy_key:
             try:
                 out = await self._address_alchemy(address, direction, limit)
@@ -236,8 +271,26 @@ class BaseX402Reader:
                 errors.append(f"Alchemy: {exc}")
         if out is None:
             raise ChainError("; ".join(errors) or "No source for Base transfers is configured.")
+        out["errors"] = errors
         await self._fill_senders(out["payments"])
         return out
+
+    async def _address_cdp(self, address: str, direction: str | None, limit: int) -> dict:
+        from datetime import timedelta
+
+        since = datetime.now(timezone.utc) - timedelta(days=ADDRESS_LOOKBACK_DAYS)
+        payments = await self.cdp.address_transfers(address, direction, since, limit)
+        for p in payments:
+            self._remember(p.tx, p.facilitator)
+        return {"payments": payments, "source": "Coinbase CDP SQL API (Base)",
+                "source_url": f"{PUBLIC_EXPLORER}/address/{address}?tab=token_transfers"}
+
+    def _remember(self, tx: str, sender: str | None) -> None:
+        if sender is None:
+            return
+        if len(self._senders) >= SENDER_CACHE:
+            self._senders.pop(next(iter(self._senders)))
+        self._senders[tx] = sender
 
     async def _address_blockscout(self, address: str, direction: str | None, limit: int) -> dict:
         params = {"token": USDC_BASE}
@@ -272,7 +325,11 @@ class BaseX402Reader:
     async def _fill_senders(self, payments: list[Payment], max_lookups: int = 10) -> None:
         """Find who sent each transaction, so a payment can be tied to a facilitator. Payments to a known x402
         server or with a gasless method come first; the rest stay without a sender (shown as plain USDC)."""
+        for p in payments:
+            if p.facilitator is None and p.tx in self._senders:
+                p.facilitator = self._senders[p.tx]
         wanted = [p for p in payments if p.facilitator is None and (p.gasless or self.snap.server(p.pay_to))]
+        self._blockscout_down = self.blockscout_blocked()
         seen: dict[str, str | None] = {}
         for p in wanted:
             if p.tx in seen:
@@ -280,14 +337,17 @@ class BaseX402Reader:
                 continue
             if len(seen) >= max_lookups:
                 break
-            try:
-                if self.blockscout_key or not self.alchemy_key:
-                    tx = await self._blockscout(f"/transactions/{p.tx}")
-                    sender = (tx.get("from") or {}).get("hash")
-                else:
-                    tx = await self._alchemy("eth_getTransactionByHash", [p.tx]) or {}
-                    sender = tx.get("from")
-            except (ChainError, httpx.HTTPError):
-                sender = None
+            sender = None
+            if not self._blockscout_down:
+                try:
+                    sender = ((await self._blockscout(f"/transactions/{p.tx}")).get("from") or {}).get("hash")
+                except (ChainError, httpx.HTTPError):
+                    self._blockscout_down = True  # do not keep paying for a source that is failing this round
+            if sender is None and self.alchemy_key:
+                try:
+                    sender = (await self._alchemy("eth_getTransactionByHash", [p.tx]) or {}).get("from")
+                except (ChainError, httpx.HTTPError):
+                    sender = None
             seen[p.tx] = norm(sender) if sender else None
             p.facilitator = seen[p.tx]
+            self._remember(p.tx, seen[p.tx])

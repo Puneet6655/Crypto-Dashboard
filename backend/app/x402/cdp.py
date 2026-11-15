@@ -71,7 +71,7 @@ def bearer_token(key_id: str, key_secret: str, method: str = "POST", host: str =
     return jwt.encode(claims, key, algorithm=algorithm, headers={"kid": key_id, "nonce": secrets.token_hex(16)})
 
 
-def payments_sql(facilitators: list[str], since: datetime, limit: int = 1000) -> str:
+def payments_sql(facilitators: list[str], since: datetime, limit: int = 5000) -> str:
     addresses = ", ".join(f"'{norm(a)}'" for a in facilitators if a.startswith("0x") and all(c in "0123456789abcdefx" for c in norm(a)))
     stamp = since.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     return (
@@ -80,9 +80,32 @@ def payments_sql(facilitators: list[str], since: datetime, limit: int = 1000) ->
         "FROM base.events "
         "WHERE event_signature = 'Transfer(address,address,uint256)' "
         f"AND address = '{USDC_BASE}' "
-        f"AND block_timestamp > toDateTime('{stamp}') "
+        f"AND block_timestamp >= toDateTime('{stamp}') "
         f"AND transaction_from IN ({addresses}) "
         f"ORDER BY block_timestamp ASC LIMIT {int(limit)}"
+    )
+
+
+def address_sql(address: str, direction: str | None, since: datetime, limit: int = 50) -> str:
+    a = norm(address)
+    if not (a.startswith("0x") and len(a) == 42 and all(c in "0123456789abcdef" for c in a[2:])):
+        raise CdpError("Not a Base address.")
+    if direction == "to":
+        side = f"parameters['to'] = '{a}'"
+    elif direction == "from":
+        side = f"parameters['from'] = '{a}'"
+    else:
+        side = f"(parameters['to'] = '{a}' OR parameters['from'] = '{a}')"
+    stamp = since.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return (
+        "SELECT transaction_hash, transaction_from, block_number, block_timestamp, "
+        "parameters['from'] AS payer, parameters['to'] AS pay_to, parameters['value'] AS value "
+        "FROM base.events "
+        "WHERE event_signature = 'Transfer(address,address,uint256)' "
+        f"AND address = '{USDC_BASE}' "
+        f"AND block_timestamp >= toDateTime('{stamp}') "
+        f"AND {side} "
+        f"ORDER BY block_timestamp DESC LIMIT {int(limit)}"
     )
 
 
@@ -117,8 +140,22 @@ class CdpSqlClient:
         self.rows += len(rows)
         return rows
 
-    async def x402_payments(self, facilitators: list[str], since: datetime, limit: int = 1000) -> list[Payment]:
-        rows = await self.run(payments_sql(facilitators, since, limit))
+    async def x402_payments(self, facilitators: list[str], since: datetime, limit: int = 5000) -> list[Payment]:
+        """Oldest first from `since` (inclusive: the caller drops repeats). A full page means more are waiting;
+        the next call carries on from the last timestamp returned."""
+        return self._payments(await self.run(payments_sql(facilitators, since, limit)))
+
+    async def address_transfers(self, address: str, direction: str | None, since: datetime,
+                                limit: int = 50) -> list[Payment]:
+        """USDC transfers of one address since `since`, newest first, each with the transaction's sender
+        (so no extra sender lookups are needed). Costs one query and no Alchemy compute units."""
+        payments = self._payments(await self.run(address_sql(address, direction, since, limit)))
+        for p in payments:  # the sender is known, but not whether it was gasless
+            p.method, p.gasless = None, False
+        return payments
+
+    @staticmethod
+    def _payments(rows: list[dict]) -> list[Payment]:
         out = []
         for row in rows:
             try:

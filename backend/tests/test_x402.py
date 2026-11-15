@@ -176,6 +176,47 @@ def test_is_x402(snap):
     assert r.is_x402(Payment("base", TX, CLIENT, CLEAN_SERVER, 1, facilitator=FAC))
     assert r.is_x402(Payment("base", TX, CLIENT, SERVER, 1, gasless=True))
     assert not r.is_x402(Payment("base", TX, CLIENT, "0x" + "7" * 40, 1, facilitator="0x" + "8" * 40))
+    # a known server that settles its own payments (self-hosted facilitator, e.g. Bitrefill)
+    assert r.is_x402(Payment("base", TX, CLIENT, SERVER, 1, facilitator=SERVER))
+    assert not r.is_x402(Payment("base", TX, "0x" + "7" * 40, "0x" + "7" * 40, 1, facilitator="0x" + "7" * 40))
+
+
+class FakeCdp:
+    def __init__(self):
+        self.queries = 0
+
+    async def address_transfers(self, address, direction, since, limit=50):
+        self.queries += 1
+        return [Payment("base", TX, CLIENT, address, 5.0, facilitator=address)]
+
+
+def test_reader_prefers_cdp_for_addresses_and_skips_refusing_blockscout(snap):
+    def no_http(request):
+        raise AssertionError("no HTTP expected when CDP answers")
+
+    r = reader_with(no_http, snap, cdp=FakeCdp())
+    data = asyncio.run(r.address_transfers(SERVER, direction="to"))
+    assert data["source"].startswith("Coinbase CDP") and r.is_x402(data["payments"][0]) and not r.costly()
+
+    hits = {"blockscout": 0, "alchemy": 0}
+
+    def handler(request):
+        if "blockscout" in request.url.host:
+            hits["blockscout"] += 1
+            return httpx.Response(402)
+        hits["alchemy"] += 1
+        body = json.loads(request.content)
+        if body["method"] == "eth_getTransactionByHash":
+            return httpx.Response(200, json={"result": {"from": FAC}})
+        return httpx.Response(200, json={"result": {"transfers": [
+            {"hash": TX, "from": CLIENT, "to": SERVER, "rawContract": {"value": hex(5_000_000)}, "blockNum": "0x1"}]}})
+
+    r = reader_with(handler, snap, blockscout_key="k", alchemy_key="a")
+    for _ in range(2):
+        data = asyncio.run(r.address_transfers(SERVER, direction="to"))
+    assert hits["blockscout"] == 1 and r.blockscout_blocked() and r.costly()
+    assert data["payments"][0].facilitator == FAC
+    assert hits["alchemy"] == 3  # 2 transfer lists + 1 sender lookup (the second round used the cache)
 
 
 # ---- investigation mode ---------------------------------------------------------------------
@@ -270,7 +311,7 @@ def test_cdp_sql_and_token(monkeypatch):
     from app.x402 import cdp
 
     sql = cdp.payments_sql([FAC, "0xBAD'; drop"], datetime(2026, 11, 14, tzinfo=timezone.utc))
-    assert f"'{FAC}'" in sql and "drop" not in sql and "LIMIT 1000" in sql and "base.events" in sql
+    assert f"'{FAC}'" in sql and "drop" not in sql and "LIMIT 5000" in sql and ">= toDateTime" in sql and "base.events" in sql
     raw = Ed25519PrivateKey.generate().private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
     token = cdp.bearer_token("kid-1", base64.b64encode(raw).decode())
     claims = jwt.decode(token, options={"verify_signature": False}, audience=["cdp_service"])
@@ -288,6 +329,13 @@ def test_cdp_sql_and_token(monkeypatch):
     client = cdp.CdpSqlClient("kid-1", base64.b64encode(raw).decode(), transport=httpx.MockTransport(handler))
     rows = asyncio.run(client.x402_payments([FAC], datetime(2026, 11, 14, tzinfo=timezone.utc)))
     assert rows[0].amount == 80.0 and rows[0].at == "2026-11-14T10:00:00+00:00" and rows[0].facilitator == FAC
+
+    sql = cdp.address_sql(SERVER, "to", datetime(2026, 11, 8, tzinfo=timezone.utc))
+    assert f"parameters['to'] = '{SERVER}'" in sql and "DESC LIMIT 50" in sql
+    with pytest.raises(cdp.CdpError):
+        cdp.address_sql("0xBAD'; drop", None, datetime(2026, 11, 8, tzinfo=timezone.utc))
+    got = asyncio.run(client.address_transfers(SERVER, "to", datetime(2026, 11, 8, tzinfo=timezone.utc)))
+    assert got[0].facilitator == FAC and got[0].gasless is False
 
 
 # ---- API ------------------------------------------------------------------------------------
