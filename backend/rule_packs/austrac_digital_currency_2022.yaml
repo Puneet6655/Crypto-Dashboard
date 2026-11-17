@@ -1,0 +1,69 @@
+# AUSTRAC financial crime guide. CC BY 4.0: attribution "AUSTRAC for the Commonwealth of Australia 2022".
+# Use of this pack does not imply AUSTRAC endorsement.
+id: austrac_digital_currency_2022
+title: AUSTRAC digital currency indicators
+authority: Australian Transaction Reports and Analysis Centre (AUSTRAC)
+jurisdiction: Australia
+document:
+  title: "Financial crime guide: Preventing the criminal abuse of digital currencies"
+  url: https://www.austrac.gov.au/sites/default/files/2022-04/AUSTRAC_FCG_PreventingCriminalAbuseOfDigitalCurrencies_FINAL.pdf
+  published: 2022-04
+licence: "CC BY 4.0, AUSTRAC for the Commonwealth of Australia 2022. Paraphrased; no endorsement by AUSTRAC implied."
+version: 1
+summary: >-
+  On-chain indicators from the guide's account activity, darknet and terrorism financing sections.
+  AUSTRAC says each indicator should trigger enhanced customer due diligence (p. 11).
+chains: [bitcoin]
+rules:
+  - id: listed_wallet
+    title: Wallet is on a sanctions or crime list
+    citation: "p. 14 (wallets linked to illicit activity on sanctions lists or public information)"
+    severity: high
+    weight: 4
+    when: on_sanctions_list + on_ransomware_list + on_scam_list >= 1
+    explain: The address itself is on at least one of the OFAC, Ransomwhere and CryptoScamDB lists.
+
+  - id: listed_wallet_link
+    title: Transacts with wallets on sanctions or crime lists
+    citation: "p. 14 (the wallets a customer transacts with are linked to illicit activity)"
+    severity: high
+    weight: 3
+    when: sanctioned_counterparties + ransomware_counterparties + scam_counterparties >= 1
+    explain: >-
+      Listed counterparties: {sanctioned_counterparties} sanctions, {ransomware_counterparties} ransomware,
+      {scam_counterparties} scam site.
+
+  - id: mixer_use
+    title: Earnings moved through a mixer
+    citation: "p. 14 (moving earnings through mixers, layering before cashing out)"
+    severity: medium
+    weight: 2
+    when: coinjoin_like_tx_count >= 1
+    explain: "{coinjoin_like_tx_count} CoinJoin-like transactions in the window."
+
+  - id: small_deposits_moved_on
+    title: Many small deposits moved on straight away
+    citation: "p. 15 (multiple small deposits immediately transferred to private wallets)"
+    severity: medium
+    weight: 2
+    when: received_tx_count >= 5 and median_received_btc <= 0.01 and median_hours_to_spend <= 6 and pass_through_ratio >= 0.8
+    explain: >-
+      {received_tx_count} small deposits (median {median_received_btc:.5f} BTC), typically sent on within
+      {median_hours_to_spend:.1f} hours.
+
+  - id: layering_peel
+    title: Repeated peel-chain style spends
+    citation: "p. 14 (layering to hide the source or destination of funds)"
+    severity: low
+    weight: 1
+    when: sent_tx_count >= 5 and peel_like_send_share >= 0.6
+    explain: "{peel_like_send_share:.0%} of its {sent_tx_count} spends peel off a small payment and pass the rest on."
+
+  - id: many_senders_one_wallet
+    title: Many different senders paying one wallet
+    citation: "p. 14 (multiple customers sending funds to the same external wallet)"
+    severity: low
+    weight: 1
+    when: payers >= 20 and payees <= 2
+    explain: "{payers} different addresses paid it, while it paid only {payees}."
+    advice: Exchanges and merchants also look like this; check whether it is a known service.

@@ -1,0 +1,32 @@
+# Template for a new rule pack. Copy it to a new file (no leading "_"), fill it in, and check it with
+#   python -m app.redflags validate rule_packs/my_pack.yaml --facts example_facts.json
+# or paste it on the Rule packs page ("Check pack"). Files starting with "_" are never loaded.
+#
+# Facts you can use in "when" and "explain": python -m app.redflags facts  (or GET /api/red-flags/facts)
+# Condition language: numbers, fact names, + - * /, < <= > >= == !=, and / or / not, brackets,
+# min(), max(), abs(). Nothing else is allowed.
+
+id: my_authority_topic_2026          # lower case, digits and _, unique across all packs
+title: Short name shown in the dashboard
+authority: Name of the authority that published the indicators
+jurisdiction: International          # or the country / region
+document:
+  title: Full title of the publication
+  url: https://example.gov/the-publication   # must be https
+  published: 2026-01                         # optional
+  reference: ABC-2026-001                    # optional report number
+licence: "Terms of the source document, and how this pack uses it (e.g. paraphrased and linked)."
+version: 1
+summary: One or two sentences on what the pack covers and what it leaves out.
+chains: [bitcoin]                    # chains with facts today: bitcoin
+enabled_by_default: true
+weight: 1.0                          # multiplies every rule weight in this pack (admins can change it)
+rules:
+  - id: example_rule
+    title: What the red flag means, in plain words
+    citation: "section 2, paragraph 4"       # where in the document
+    severity: medium                         # info, low, medium, high or critical
+    weight: 2                                # how much it counts when it fires
+    when: pass_through_ratio >= 0.9 and median_hours_to_spend <= 24
+    explain: "Sent on {pass_through_ratio:.0%} of what it received after {median_hours_to_spend:.1f} hours."
+    advice: Optional next step for the analyst.

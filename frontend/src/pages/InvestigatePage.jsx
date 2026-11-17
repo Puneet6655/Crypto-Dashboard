@@ -7,6 +7,7 @@ import PageHeader from "../components/PageHeader.jsx";
 import { AddToCaseButton } from "../components/AddToCaseMenu.jsx";
 import { WEB3_DESIGN } from "../config/w3Design.js";
 import RiskPanel from "../investigate/RiskPanel.jsx";
+import RedFlagsPanel from "../investigate/RedFlagsPanel.jsx";
 import W3SearchPanel from "../w3/W3SearchPanel.jsx";
 
 // The original dashboard: controls, graph and details, with the result tabs below.
@@ -61,6 +62,7 @@ export default function InvestigatePage({ investigation: inv }) {
               {inv.status === "done" && (
                 <RiskPanel key={result?.investigation_id} inv={inv} result={result} selectedId={inv.selectedId} onShowWhy={showWhy} />
               )}
+              {inv.status === "done" && <RedFlagsPanel key={`rf-${result?.investigation_id}`} inv={inv} />}
               <div key={inv.selectedId || "none"} className="w3-slide-in">
                 <EntityDetails result={result} selectedId={inv.selectedId} onSelect={inv.setSelectedId} onEvidenceClick={inv.handleEvidenceClick} expand={inv} />
               </div>
@@ -87,13 +89,16 @@ export default function InvestigatePage({ investigation: inv }) {
             methodLabel={METHODS.find((m) => m.id === inv.form.method)?.label ?? inv.form.method}
             expand={inv}
           />
-          <EntityDetails
-            result={result}
-            selectedId={inv.selectedId}
-            onSelect={inv.setSelectedId}
-            onEvidenceClick={inv.handleEvidenceClick}
-            expand={inv}
-          />
+          <div>
+            <EntityDetails
+              result={result}
+              selectedId={inv.selectedId}
+              onSelect={inv.setSelectedId}
+              onEvidenceClick={inv.handleEvidenceClick}
+              expand={inv}
+            />
+            {inv.status === "done" && <RedFlagsPanel key={`rf-${result?.investigation_id}`} inv={inv} />}
+          </div>
         </div>
       )}
 

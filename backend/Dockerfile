@@ -12,6 +12,8 @@ COPY requirements.txt requirements-deploy.txt ./
 RUN pip install --no-cache-dir -r requirements-deploy.txt
 
 COPY app ./app
+# Authority red-flag rule packs (FATF, FinCEN, AUSTRAC, OFAC). Extra packs: RULE_PACKS_DIR or upload in the app.
+COPY rule_packs ./rule_packs
 COPY models ./models
 # x402 snapshot (about 6 MB, see data/x402/README.md); nothing else from data/ is copied.
 COPY data/x402 ./data/x402

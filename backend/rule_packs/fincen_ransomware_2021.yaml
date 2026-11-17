@@ -1,0 +1,56 @@
+# FinCEN ransomware advisory. US government work (public domain); wording is ours.
+id: fincen_ransomware_2021
+title: FinCEN ransomware red flags
+authority: U.S. Financial Crimes Enforcement Network (FinCEN)
+jurisdiction: United States
+document:
+  title: Advisory on Ransomware and the Use of the Financial System to Facilitate Ransom Payments
+  url: https://www.fincen.gov/sites/default/files/2021-11/FinCEN%20Ransomware%20Advisory_FINAL_508_.pdf
+  published: 2021-11-08
+  reference: FIN-2021-A004
+licence: "U.S. government work, public domain. Linked and paraphrased."
+version: 1
+summary: The on-chain red flags from FinCEN's 12 ransomware indicators (numbered in the order they appear).
+chains: [bitcoin]
+rules:
+  - id: ransomware_address
+    title: Address is on a ransomware payment list
+    citation: "red flag 3 (address tied to ransomware payments or variants)"
+    severity: critical
+    weight: 5
+    when: on_ransomware_list == 1
+    explain: The address itself is on the Ransomwhere list of ransomware payment addresses.
+    advice: Ransom payments can be reportable. Confirm the match on ransomwhe.re before acting.
+
+  - id: ransomware_counterparty
+    title: Dealt with a ransomware payment address
+    citation: "red flag 3 (address transacts with one tied to ransomware)"
+    severity: high
+    weight: 4
+    when: ransomware_counterparties >= 1
+    explain: "{ransomware_counterparties} of its counterparties are on the Ransomwhere list."
+    advice: Check the direction and date of each link in the graph; an old link means less than a recent one.
+
+  - id: mixing_service
+    title: Funds went through a mixing-style transaction
+    citation: "red flag 11 (transfers involving a mixing service)"
+    severity: medium
+    weight: 2
+    when: coinjoin_like_tx_count >= 1
+    explain: "{coinjoin_like_tx_count} CoinJoin-like transactions in the window."
+
+  - id: little_history_large_payment
+    title: Large payment from a wallet with almost no history
+    citation: "red flag 7 (little or no prior history, then a large transaction)"
+    severity: medium
+    weight: 2
+    when: tx_count <= 5 and wallet_span_days <= 3 and max_sent_btc >= 1
+    explain: "Only {tx_count} transactions over {wallet_span_days:.1f} days, including a payment of {max_sent_btc:.4f} BTC."
+
+  - id: equivalent_amount_onward
+    title: Received funds and soon sent the same amount on
+    citation: "red flag 5 (funds received and soon sent on in equivalent amounts)"
+    severity: low
+    weight: 1
+    when: 0.95 <= pass_through_ratio <= 1.05 and median_hours_to_spend <= 48 and received_btc >= 0.05
+    explain: "Sent on {pass_through_ratio:.0%} of what it received, typically {median_hours_to_spend:.1f} hours later."

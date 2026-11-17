@@ -1,0 +1,79 @@
+# FATF virtual-asset red flags, Bitcoin rules.
+# FATF text is (c) FATF/OECD, all rights reserved: rules below are our own wording, with the paragraph
+# they come from. Thresholds are this dashboard's choices, not FATF's (FATF gives no numbers).
+id: fatf_va_red_flags_2020
+title: FATF virtual asset red flags
+authority: Financial Action Task Force (FATF)
+jurisdiction: International
+document:
+  title: Virtual Assets Red Flag Indicators of Money Laundering and Terrorist Financing
+  url: https://www.fatf-gafi.org/publications/fatfrecommendations/documents/Virtual-Assets-Red-Flag-Indicators.html
+  published: 2020-09
+licence: "(c) 2020 FATF/OECD, all rights reserved. Indicators paraphrased in our own words and linked, no text reproduced."
+version: 1
+summary: >-
+  On-chain parts of FATF's six indicator groups (transactions, patterns, anonymity, source of funds).
+  Indicators about identity, IP addresses and jurisdictions need customer data and are not included.
+  FATF says red flags must be read in context and are not proof (paragraphs 8-10).
+chains: [bitcoin]
+weight: 1.0
+rules:
+  - id: small_in_large_out
+    title: Many small payments in, one large payment out
+    citation: "para 12 (transaction patterns: small inflows from unrelated wallets)"
+    severity: medium
+    weight: 2
+    when: received_tx_count >= 10 and payers >= 5 and largest_send_vs_median_receive >= 20
+    explain: >-
+      {received_tx_count} payments in from {payers} addresses (median {median_received_btc:.5f} BTC), then a single
+      payment out of {max_sent_btc:.4f} BTC, {largest_send_vs_median_receive:.0f} times the typical payment in.
+    advice: Look at who the many payers are and where the large payment went.
+
+  - id: quick_pass_through
+    title: Funds received and moved on almost at once
+    citation: "para 11 (deposits promptly withdrawn or moved to a private wallet)"
+    severity: medium
+    weight: 2
+    when: pass_through_ratio >= 0.9 and median_hours_to_spend <= 24 and received_btc >= 0.1
+    explain: >-
+      It sent on {pass_through_ratio:.0%} of the {received_btc:.4f} BTC it received, typically
+      {median_hours_to_spend:.1f} hours after the money arrived.
+    advice: Follow the outgoing payments; a pass-through wallet is often one hop in a longer chain.
+
+  - id: short_lived_high_value
+    title: Large amounts through a short-lived wallet
+    citation: "para 12 (new users: large first deposit then quick withdrawal of the whole balance)"
+    severity: high
+    weight: 3
+    when: wallet_span_days <= 7 and received_btc >= 1 and pass_through_ratio >= 0.8
+    explain: >-
+      All its activity in the window spans {wallet_span_days:.1f} days, yet it received {received_btc:.4f} BTC
+      and sent on {pass_through_ratio:.0%} of it.
+
+  - id: mixing_shape
+    title: Took part in a mixing (CoinJoin-like) transaction
+    citation: "para 13 (use of mixing or tumbling services)"
+    severity: high
+    weight: 3
+    when: coinjoin_like_tx_count >= 1
+    explain: "{coinjoin_like_tx_count} of its transactions have many outputs of exactly the same value, the usual shape of a CoinJoin round."
+    advice: CoinJoin is also used for ordinary privacy. Check the amounts before and after the mixing round.
+
+  - id: illicit_counterparty
+    title: Paid by or paid to an address linked to crime
+    citation: "paras 11 and 15 (funds from addresses linked to fraud, ransomware, theft or darknet markets)"
+    severity: high
+    weight: 4
+    when: ransomware_counterparties + scam_counterparties + illicit_label_counterparties >= 1
+    explain: >-
+      Counterparties on lists: {ransomware_counterparties} ransomware, {scam_counterparties} scam site,
+      {illicit_label_counterparties} labelled illicit.
+    advice: Open the highlighted counterparties in the graph and check when the link happened.
+
+  - id: below_threshold_structuring
+    title: Payments kept just under a reporting threshold
+    citation: "para 11 (splitting transfers into amounts just below reporting thresholds)"
+    severity: medium
+    weight: 2
+    when: usd_near_reporting_threshold_count >= 3
+    explain: "{usd_near_reporting_threshold_count} payments were worth just under a reporting threshold."

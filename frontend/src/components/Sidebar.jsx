@@ -9,6 +9,7 @@ export const PAGES = [
   { id: "graph", label: "Graph explorer", icon: "graph", hint: "Advanced graph mode: thousands of nodes, expand step by step" },
   { id: "cases", label: "Cases", icon: "cases", hint: "Group what you want to follow up" },
   { id: "alerts", label: "Live alerts", icon: "bell", hint: "Case and OFAC addresses moving money now" },
+  { id: "rule-packs", label: "Rule packs", icon: "shield", hint: "Red-flag indicators from FATF, FinCEN, AUSTRAC and OFAC" },
   { id: "x402", label: "x402 payments", icon: "payment", hint: "AI-agent USDC payments: risky servers and flagged payments" },
   { id: "models", label: "Models", icon: "shield", hint: "Random Forest vs XGBoost, offline benchmark and SHAP", role: "admin" },
   { id: "status", label: "Status", icon: "status", hint: "Live lookups, database, sanction lists" },

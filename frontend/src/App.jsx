@@ -15,6 +15,7 @@ import CasesPage from "./pages/CasesPage.jsx";
 import StatusPage from "./pages/StatusPage.jsx";
 import ModelsPage from "./pages/ModelsPage.jsx";
 import SourcesPage from "./pages/SourcesPage.jsx";
+import RulePacksPage from "./pages/RulePacksPage.jsx";
 import BigQueryPage from "./pages/BigQueryPage.jsx";
 import UsersPage from "./pages/UsersPage.jsx";
 import AccountPage from "./pages/AccountPage.jsx";
@@ -140,6 +141,7 @@ function Shell() {
           {page === "models" && <ModelsPage />}
           {page === "status" && <StatusPage />}
           {page === "sources" && <SourcesPage />}
+          {page === "rule-packs" && <RulePacksPage />}
           {page === "bigquery" && <BigQueryPage />}
           {page === "users" && <UsersPage />}
           {page === "account" && <AccountPage />}

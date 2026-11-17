@@ -1,0 +1,32 @@
+# OFAC sanctions screening. US government work (public domain).
+id: ofac_virtual_currency_2021
+title: OFAC sanctions screening
+authority: U.S. Treasury, Office of Foreign Assets Control (OFAC)
+jurisdiction: United States
+document:
+  title: Sanctions Compliance Guidance for the Virtual Currency Industry
+  url: https://ofac.treasury.gov/
+  published: 2021-10-15
+licence: "U.S. government work, public domain. The address list is the community extraction of the SDN list (MIT)."
+version: 1
+summary: >-
+  OFAC expects screening of wallet addresses against the SDN list. Matches come from the downloaded snapshot;
+  confirm important ones on sanctionssearch.ofac.treasury.gov.
+chains: [bitcoin]
+rules:
+  - id: sanctioned_address
+    title: Address is on the OFAC SDN list
+    citation: "screening of wallet addresses against the SDN list"
+    severity: critical
+    weight: 10
+    when: on_sanctions_list == 1
+    explain: The address itself is on the OFAC SDN snapshot.
+    advice: Dealings with SDN-listed addresses are generally prohibited for US persons. Confirm on the official search.
+
+  - id: sanctioned_counterparty
+    title: Dealt with an OFAC-listed address
+    citation: "screening of counterparties and transaction histories"
+    severity: high
+    weight: 5
+    when: sanctioned_counterparties >= 1
+    explain: "{sanctioned_counterparties} of its counterparties are on the OFAC SDN snapshot."

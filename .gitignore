@@ -46,3 +46,6 @@ models-deploy.zip
 backend/reports/
 docs/HANDOVER_GUIDE.*
 docs/weekly-update-*
+
+# Red-flag rule packs uploaded on the Rule packs page, and the on/off settings (server-local)
+backend/data/rule_packs_uploaded/

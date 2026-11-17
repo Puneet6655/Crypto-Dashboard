@@ -5,6 +5,7 @@ import { runFixtureInvestigation, validateInput } from "../services/runFixtureIn
 import { startInvestigation, streamGraphExpand } from "../api/client.js";
 import { EXPAND_NODE_CAP, EXPAND_PER_NODE, expandableAddress, mergeExpansion } from "../services/expandInvestigationGraph.js";
 import { MODEL_METHODS, normalizeBitcoin, requestModelScore, scoreKey, withModelScore } from "../services/modelScore.js";
+import { requestRedFlags, withRedFlags } from "../services/redFlags.js";
 
 const FIRST_MODE = MODES[0];
 const firstReadyMethod = (mode, inputType) =>
@@ -43,6 +44,10 @@ export function useInvestigation() {
   const scoresRef = useRef(scores);
   scoresRef.current = scores;
   const [modelFamily, setModelFamilyState] = useState("xgboost");
+  // Authority red flags (rule packs), kept for the whole visit: address -> { status, data, error }.
+  const [flags, setFlags] = useState({});
+  const flagsRef = useRef(flags);
+  flagsRef.current = flags;
 
   // Merge a change into the form and keep dependent choices valid.
   function handleFormChange(changes) {
@@ -101,6 +106,10 @@ export function useInvestigation() {
     const scoredHere = request.inputType === "bitcoin_address" && request.method !== "fixture_review"
       && !MODEL_METHODS.has(request.method);
     if (scoredHere) scoreAddress(normalizeBitcoin(request.value), modelFamily);
+    // ...and the authority red flags, also at the same time (the authority_rules method brings them itself).
+    const flaggedHere = request.inputType === "bitcoin_address" && request.method !== "fixture_review"
+      && request.method !== "authority_rules";
+    if (flaggedHere) checkFlags(normalizeBitcoin(request.value));
 
     setStatus("loading");
     setStartedAt(Date.now());
@@ -124,6 +133,13 @@ export function useInvestigation() {
         const family = data.explanation.model?.family ?? "xgboost";
         setScores((old) => ({ ...old, [scoreKey(family, data.explanation.address)]: { status: "done", data: data.explanation } }));
         if (MODEL_METHODS.has(request.method)) setModelFamilyState(family);
+      }
+      // The authority_rules method returns the red flags inside the result: remember them like a separate check.
+      const inside = data.explanation?.red_flags;
+      if (inside && data.input?.type === "bitcoin_address") {
+        const address = normalizeBitcoin(data.input.value);
+        setFlags((old) => ({ ...old, [address]: { status: "done", data: { ...inside, address, inResult: true,
+          disclaimer: data.limitations.find((l) => l.startsWith("Red flags are")) ?? "" } } }));
       }
       setResult(data);
       setSelectedId(data.graph.nodes[0]?.id ?? "");
@@ -218,6 +234,34 @@ export function useInvestigation() {
     }
   }
 
+  // Ask for the authority red flags of one Bitcoin address (once, unless force).
+  async function checkFlags(address, { force = false } = {}) {
+    if (!address) return;
+    const known = flagsRef.current[address];
+    if (!force && known && known.status !== "error") return;
+    const loading = { status: "loading", startedAt: Date.now() };
+    flagsRef.current = { ...flagsRef.current, [address]: loading };
+    setFlags((old) => ({ ...old, [address]: loading }));
+    try {
+      const data = await requestRedFlags(address);
+      setFlags((old) => (old[address] === loading ? { ...old, [address]: { status: "done", data } } : old));
+    } catch (err) {
+      setFlags((old) => (old[address] === loading ? { ...old, [address]: { status: "error", error: err.message } } : old));
+    }
+  }
+
+  const flagsOf = (address) => (address ? flags[address] ?? null : null);
+
+  // When the looked-up address's red flags are in, add their findings and evidence to the result itself.
+  useEffect(() => {
+    const subject = subjectAddress(result);
+    if (!subject) return;
+    const entry = flags[subject];
+    if (entry?.status !== "done" || entry.data.inResult || result.red_flags === entry.data) return;
+    const id = result.investigation_id;
+    setResult((old) => (old?.investigation_id === id ? withRedFlags(old, entry.data) : old));
+  }, [result, flags]);
+
   // Switch model (XGBoost / Random Forest): the looked-up address is scored with it too.
   function setModelFamily(family) {
     setModelFamilyState(family);
@@ -254,6 +298,7 @@ export function useInvestigation() {
     form, status, result, error, selectedId, highlightedEvidence, activeTab, startedAt,
     expandingId, expandedIds, expandNote, canExpand: (id) => Boolean(expandableAddress(result, id)), expandNode,
     modelFamily, setModelFamily, scoreAddress, scoreOf, subjectAddress: subjectAddress(result),
+    checkFlags, flagsOf,
     setSelectedId, setActiveTab,
     handleFormChange, handleCaseChange, handleStart, handleCancel, handleEvidenceClick, investigateLive,
   };

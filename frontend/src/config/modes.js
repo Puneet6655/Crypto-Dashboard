@@ -51,6 +51,14 @@ export const METHODS = [
     runsOn: "server",
   },
   {
+    id: "authority_rules",
+    label: "Authority red flags (FATF, FinCEN, AUSTRAC, OFAC rule packs)",
+    modes: ["crypto_investigation"],
+    inputTypes: ["bitcoin_address"],
+    status: "ready",
+    runsOn: "server",
+  },
+  {
     id: "fixture_review",
     label: "Demo case review (synthetic fixture)",
     modes: ["scam_early_warning", "crypto_investigation", "x402"],

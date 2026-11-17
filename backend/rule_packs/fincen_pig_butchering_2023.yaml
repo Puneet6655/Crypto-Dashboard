@@ -1,0 +1,43 @@
+# FinCEN "pig butchering" alert. US government work (public domain); wording is ours.
+id: fincen_pig_butchering_2023
+title: FinCEN pig-butchering scam red flags
+authority: U.S. Financial Crimes Enforcement Network (FinCEN)
+jurisdiction: United States
+document:
+  title: FinCEN Alert on Prevalent Virtual Currency Investment Fraud Schemes Commonly Known as "Pig Butchering"
+  url: https://www.fincen.gov/sites/default/files/shared/FinCEN_Alert_Pig_Butchering_FINAL_508c.pdf
+  published: 2023-09-08
+  reference: FIN-2023-Alert005
+licence: "U.S. government work, public domain. Linked and paraphrased."
+version: 1
+summary: >-
+  Most of the alert's red flags are about bank customers (cashing out savings, loans). These rules cover
+  the on-chain side: scam-linked addresses and the "small payout, then much bigger payments" victim pattern.
+chains: [bitcoin]
+rules:
+  - id: scam_address
+    title: Address reported as a scam site's payment address
+    citation: "scam typology and financial red flags section"
+    severity: high
+    weight: 4
+    when: on_scam_list == 1
+    explain: CryptoScamDB lists the address as a payment address of a scam website.
+
+  - id: scam_counterparty
+    title: Dealt with a scam site's payment address
+    citation: "scam typology and financial red flags section"
+    severity: medium
+    weight: 2
+    when: scam_counterparties >= 1
+    explain: "{scam_counterparties} of its counterparties are listed by CryptoScamDB as scam payment addresses."
+
+  - id: small_return_then_large_out
+    title: Small payment back, then much larger payments out
+    citation: "financial red flag 3 (a deposit about equal to what was sent, then much larger transfers out)"
+    severity: low
+    weight: 1
+    when: received_tx_count <= 3 and sent_tx_count >= 2 and largest_send_vs_median_receive >= 10
+    explain: >-
+      Only {received_tx_count} payments in (median {median_received_btc:.5f} BTC) but payments out of up to
+      {max_sent_btc:.4f} BTC: the pattern of a victim shown a small "profit" and then asked to invest more.
+    advice: This pattern points to a possible victim, not a scammer.

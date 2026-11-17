@@ -1,6 +1,7 @@
 """Runs one investigation: fetch data, build the graph, describe what was seen.
 
-Methods: "live_lookup" for addresses and transactions, and "rules_v1" (list checks only,
+Methods: "live_lookup" for addresses and transactions, "authority_rules" (a Bitcoin address lookup plus
+the authority red-flag rule packs, app/redflags), and "rules_v1" (list checks only,
 app/services/rules_investigation.py) for websites and Bitcoin addresses. It reports observations, plus exact-match checks of every address in
 the graph against the downloaded OFAC sanctions and Ransomwhere lists
 (app/intelligence). Models (Milestones 10-11) add judgements later, as separate findings.
@@ -187,6 +188,17 @@ async def run_investigation(request: InvestigationRequest, provider: BitcoinProv
         live = request.model_copy(update={"method": "live_lookup"})
         result = await run_investigation(live, provider, max_nodes, indicators, ethereum, base, solana)
         return apply(result)
+    if request.method == "authority_rules":
+        from app.redflags.investigation import investigate_with_red_flags
+
+        if request.input_type != "bitcoin_address":
+            raise UnsupportedInvestigation("Authority red flags check Bitcoin addresses for now.")
+        if not is_bitcoin_address(request.value):
+            raise UnsupportedInvestigation("That does not look like a mainnet Bitcoin address.")
+        index = indicators if indicators is not None else get_indicator_index()
+        return await investigate_with_red_flags(
+            request, provider, max_nodes, index,
+            lambda live: run_investigation(live, provider, max_nodes, index, ethereum, base, solana))
     if request.method in ("random_forest", "xgboost"):
         from app.ml.scoring import investigate_with_model
 
