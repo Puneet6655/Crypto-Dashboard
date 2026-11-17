@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { caseItemAttrs, itemFromNode } from "../cases/caseItems.js";
 import ShapChart from "./ShapChart.jsx";
+import { downloadEvidence } from "../services/evidenceExport.js";
 
 export const TABS = ["Findings", "Why Flagged?", "Evidence", "Provenance", "Explanation", "Evidence Assessment"];
 
@@ -25,19 +26,29 @@ export default function ResultTabs({ result, active, onTabChange: setActive, hig
 
   return (
     <section className="card tabs-card">
-      <div className="tab-row" role="tablist">
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            role="tab"
-            aria-selected={tab === active}
-            className={tab === active ? "tab active" : "tab"}
-            onClick={() => setActive(tab)}
-          >
-            {tab}
-          </button>
-        ))}
+      <div className="tab-row">
+        <div className="tab-list" role="tablist">
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={tab === active}
+              className={tab === active ? "tab active" : "tab"}
+              onClick={() => setActive(tab)}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+        {/* Milestone 15: save the whole result (findings, evidence, model score, red flags, limitations). */}
+        <div className="export-actions" role="group" aria-label="Export evidence">
+          <span className="small muted">Export</span>
+          <button type="button" className="secondary compact" onClick={() => downloadEvidence(result, "json")}
+            title="Download the full result as JSON">JSON</button>
+          <button type="button" className="secondary compact" onClick={() => downloadEvidence(result, "markdown")}
+            title="Download a readable evidence report as Markdown">Markdown</button>
+        </div>
       </div>
 
       <div className="tab-body" role="tabpanel" key={active}>
