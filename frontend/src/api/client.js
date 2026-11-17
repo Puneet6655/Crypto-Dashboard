@@ -77,7 +77,9 @@ export async function apiFetch(path, { method = "GET", body, signal, timeoutMs =
 export function startInvestigation({ mode, inputType, value, method }, { signal } = {}) {
   return apiFetch("/api/investigations", {
     method: "POST",
-    body: { mode, input_type: inputType, value: value.trim(), method },
+    // Bitcoin addresses: the dashboard asks for the live model score separately (services/modelScore.js), at the
+    // same time, so the lookup answers without waiting for it. Older servers ignore the extra field.
+    body: { mode, input_type: inputType, value: value.trim(), method, ...(inputType === "bitcoin_address" ? { model_score: false } : {}) },
     signal,
     // Model methods load a saved model and compute SHAP on first use, which can take longer; Bitcoin
     // address lookups also add the live XGBoost score (up to 25 s of extra provider requests). Address

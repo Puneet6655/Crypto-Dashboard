@@ -23,6 +23,9 @@ class InvestigationRequest(BaseModel):
     input_type: InputType
     value: str = Field(min_length=1, max_length=200)
     method: str = Field(min_length=1, max_length=64)
+    # Bitcoin address lookups add the live XGBoost score (up to 25 s). The dashboard sends False and asks
+    # POST /api/investigations/model-score at the same time instead, so the graph shows without waiting.
+    model_score: bool = True
 
 
 class InvestigationInput(BaseModel):

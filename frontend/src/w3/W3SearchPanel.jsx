@@ -3,6 +3,7 @@ import { INPUT_TYPES, MODES, compatibleMethods } from "../config/modes.js";
 import { validateInput } from "../services/runFixtureInvestigation.js";
 import { CHAIN_INFO, detectInput } from "./chains.js";
 import { ChainLogo } from "./ChainBadge.jsx";
+import { MODEL_METHODS } from "../services/modelScore.js";
 
 // Investigate controls in Web3 mode: one search box that works out the chain and type by itself,
 // method cards that say where the data comes from, and a start button that says what it will do.
@@ -26,7 +27,8 @@ const METHOD_INFO = {
   random_forest: { name: "Random Forest score", source: "Features from mempool.space, with a SHAP explanation · free" },
   xgboost: { name: "XGBoost score", source: "Features from mempool.space, with a SHAP explanation · free" },
 };
-const HIDDEN_METHODS = new Set(["fixture_review"]); // demo cases
+// Demo cases, and the model methods: every Bitcoin address lookup now gets the model score by itself.
+const HIDDEN_METHODS = new Set(["fixture_review", ...MODEL_METHODS]);
 
 const startLabel = (t) => (t === "url_domain" ? "website" : INPUT_TYPES[t].label);
 
@@ -41,7 +43,8 @@ function modeFor(inputType) {
     ?? MODES.find((m) => m.inputTypes.includes(inputType))?.id;
 }
 
-export default function W3SearchPanel({ form, onFormChange, onStart, isLoading }) {
+// layout "bar": one wide bar across the top of the page (Investigate), instead of the left column.
+export default function W3SearchPanel({ form, onFormChange, onStart, isLoading, layout = "column" }) {
   const value = form.value;
   const guesses = detectInput(value);
   const problem = value.trim() ? validateInput(form.inputType, value) : null;
@@ -78,9 +81,9 @@ export default function W3SearchPanel({ form, onFormChange, onStart, isLoading }
   }
 
   return (
-    <form className="card controls w3-search-panel" aria-label="Investigation controls"
+    <form className={`card controls w3-search-panel ${layout === "bar" ? "w3-search-bar" : ""}`} aria-label="Investigation controls"
       onSubmit={(e) => { e.preventDefault(); if (valid && methods.length && !isLoading) onStart(); }}>
-      <label className="field">
+      <label className="field w3-field-search">
         <span className="field-label">What do you want to look up?</span>
         <span className={`w3-bigsearch ${valid ? "valid" : problem ? "invalid" : ""}`}>
           <input type="text" className="mono" value={value} spellCheck={false} autoComplete="off"
@@ -121,8 +124,11 @@ export default function W3SearchPanel({ form, onFormChange, onStart, isLoading }
         </div>
       )}
 
-      <div className="field">
-        <span className="field-label">Analysis method</span>
+      <div className="field w3-field-methods">
+        <span className="field-label">
+          Analysis method
+          {form.inputType === "bitcoin_address" && <span className="w3-auto-score" title="XGBoost by default; switch to Random Forest in the score panel">+ live model score, automatic</span>}
+        </span>
         {methods.length ? (
           <div className="w3-methods" role="radiogroup" aria-label="Analysis method">
             {methods.map((m) => {

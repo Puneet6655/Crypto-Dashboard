@@ -93,6 +93,7 @@ class GraphBuilder:
             type="transaction",
             label=f"tx {_short(tx.txid)}",
             details={"status": tx.status, "block_height": tx.block_height,
+                     "block_time": tx.block_time.isoformat() if tx.block_time else None,
                      "total_transferred_sats": tx.total_output_sats, "fee_sats": tx.fee_sats},
         )
         if not self.add_node(tx_node):
@@ -282,9 +283,13 @@ async def _investigate_address(request: InvestigationRequest, provider: BitcoinP
                                first_finding=len(findings) + 1, first_evidence=len(evidence) + 1)
     builder.mark_listed(screening.flagged_nodes)
     sources = _data_sources(summary.provenance, page_provenance)
-    model_findings, model_evidence, model_notes, model_result = await _model_score(
-        provider, address, summary.entity_id, first_finding=len(findings) + len(screening.findings) + 1,
-        first_evidence=len(evidence) + len(screening.evidence) + 1)
+    if request.model_score:
+        model_findings, model_evidence, model_notes, model_result = await _model_score(
+            provider, address, summary.entity_id, first_finding=len(findings) + len(screening.findings) + 1,
+            first_evidence=len(evidence) + len(screening.evidence) + 1)
+    else:  # the dashboard fetches the score itself (POST /api/investigations/model-score)
+        model_findings, model_evidence, model_result = [], [], None
+        model_notes = ["The live model score is requested separately and shown next to this result"]
     now = datetime.now(timezone.utc)
     return InvestigationResult(
         investigation_id=new_investigation_id(now),
@@ -298,7 +303,7 @@ async def _investigate_address(request: InvestigationRequest, provider: BitcoinP
         graph=builder.graph(),
         evidence=evidence + screening.evidence + model_evidence,
         source_timestamps={**sources, **screening.source_timestamps},
-        limitations=(COMMON_LIMITATIONS if model_result is None else MODEL_SCORED_LIMITATIONS)
+        limitations=(COMMON_LIMITATIONS if model_result is None and request.model_score else MODEL_SCORED_LIMITATIONS)
         + ([] if complete else [f"The graph shows the newest {len(transactions)} transactions ({pages} pages of 25, "
                                 "set by BTC_ADDRESS_PAGES); click the address for older pages"]) + model_notes,
         explanation=model_result,

@@ -98,6 +98,7 @@ export default function GraphCanvas({
   layoutRun,
   hiddenTypes,
   hiddenRelations,
+  hiddenIds = null, // Investigate time-line filter: node ids to hide
   matchIds,
   showEdgeLabels,
   cyRef,
@@ -241,8 +242,9 @@ export default function GraphCanvas({
       cy.elements().removeClass("filtered");
       cy.nodes().filter((n) => hiddenTypes.has(n.data("type"))).addClass("filtered");
       cy.edges().filter((e) => hiddenRelations.has(e.data("relation"))).addClass("filtered");
+      if (hiddenIds?.size) cy.nodes().filter((n) => hiddenIds.has(n.id())).addClass("filtered");
     });
-  }, [hiddenTypes, hiddenRelations, nodes, edges, cyRef]);
+  }, [hiddenTypes, hiddenRelations, hiddenIds, nodes, edges, cyRef]);
 
   // 4. Show the selection: highlight it and its neighbours, fade the rest.
   useEffect(() => {

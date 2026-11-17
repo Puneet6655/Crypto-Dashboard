@@ -1,7 +1,7 @@
 import { ROLE_LABELS, useAuth } from "../auth/AuthContext.jsx";
 import { useCases } from "../cases/CasesContext.jsx";
 import Icon from "./Icon.jsx";
-import { WEB3_DESIGN } from "../config/w3Design.js";
+import { DESIGN, DESIGNS, WEB3_DESIGN, chooseDesign } from "../config/w3Design.js";
 
 // The pages in the side panel. "role" hides a page from people without that role.
 export const PAGES = [
@@ -34,7 +34,7 @@ export default function Sidebar({ page, open, onClose, unseenAlerts = 0, reveal 
           <span className="brand-mark"><Icon name="brand" size={22} /></span>
           <span>
             <span className="brand-name">Blockchain Intelligence</span>
-            <span className="brand-sub">{reveal ? "Multi-chain risk" : "Bitcoin risk dashboard"}</span>
+            <span className="brand-sub">{WEB3_DESIGN ? "Multi-chain risk" : "Bitcoin risk dashboard"}</span>
           </span>
         </a>
         {reveal && (
@@ -70,6 +70,16 @@ export default function Sidebar({ page, open, onClose, unseenAlerts = 0, reveal 
             </a>
           ))}
         </nav>
+
+        {/* Look of the dashboard, saved in this browser. */}
+        <div className="design-picker" role="radiogroup" aria-label="Dashboard look">
+          {DESIGNS.map((d) => (
+            <button key={d.id} type="button" role="radio" aria-checked={DESIGN === d.id} title={d.hint}
+              className={DESIGN === d.id ? "on" : ""} onClick={() => DESIGN !== d.id && chooseDesign(d.id)}>
+              {d.label}
+            </button>
+          ))}
+        </div>
 
         {user && (
           <div className="sidebar-user">

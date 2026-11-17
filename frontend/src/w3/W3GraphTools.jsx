@@ -5,6 +5,7 @@ import { useCases } from "../cases/CasesContext.jsx";
 import { itemFromNode } from "../cases/caseItems.js";
 import { useToast } from "../components/Toasts.jsx";
 import { W3_EDGE_IN, W3_EDGE_OUT, W3_KIND_COLORS } from "./sigmaTheme.js";
+import { NEU_DESIGN } from "../config/w3Design.js";
 
 // Graph explorer extras for Web3 mode: right-click menu, live search suggestions, filters,
 // and "money flow" particles drawn over the WebGL graph.
@@ -194,7 +195,7 @@ export function W3FlowOverlay({ sigmaRef, graph, focusId, view, on }) {
         const a = renderer.getNodeDisplayData(s), b = renderer.getNodeDisplayData(t);
         if (!a || !b) continue;
         const pa = renderer.framedGraphToViewport(a), pb = renderer.framedGraphToViewport(b);
-        const color = !hasFocus ? "rgba(196,181,253,0.85)" : s === focus ? W3_EDGE_OUT : W3_EDGE_IN;
+        const color = !hasFocus ? (NEU_DESIGN ? "rgba(91,108,255,0.7)" : "rgba(196,181,253,0.85)") : s === focus ? W3_EDGE_OUT : W3_EDGE_IN;
         const len = Math.hypot(pb.x - pa.x, pb.y - pa.y);
         if (len < 6) continue;
         const speed = 0.00018 * Math.max(0.6, Math.min(2.2, 160 / len)) * 1.6; // similar on-screen speed for short and long links

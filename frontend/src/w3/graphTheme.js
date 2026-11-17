@@ -1,7 +1,9 @@
 // Web3 mode look for the Investigate graph (Cytoscape): light labels on dark tags, a soft glow under every node,
 // a brighter glow on the selected one. Added after the normal stylesheet, so later rules win.
+import { NEU_DESIGN } from "../config/w3Design.js";
+
 export function w3Stylesheet(base) {
-  return [
+  return NEU_DESIGN ? neuStylesheet(base) : [
     ...base,
     {
       selector: "node",
@@ -40,9 +42,11 @@ export function w3Hide(cy) {
 }
 
 export function w3Entrance(cy, layoutOptions) {
-  const layout = cy.elements(":visible").layout({ ...layoutOptions, animate: false, fit: true, padding: 40 });
+  // Not ":visible": Cytoscape counts the hidden (opacity 0) elements as invisible, so the layout would see nothing
+  // and every node stayed on the start grid.
+  const layout = cy.elements().not(".filtered").layout({ ...layoutOptions, animate: false, fit: true, padding: 40 });
   layout.one("layoutstop", () => {
-    const nodes = cy.nodes(":visible");
+    const nodes = cy.nodes().not(".filtered");
     const final = new Map(nodes.map((n) => [n.id(), { ...n.position() }]));
     const ext = cy.extent();
     const centre = { x: (ext.x1 + ext.x2) / 2, y: (ext.y1 + ext.y2) / 2 };
@@ -66,4 +70,38 @@ export function w3Entrance(cy, layoutOptions) {
   });
   layout.run();
   return layout;
+}
+
+// Soft (neumorphism) look: dark labels on soft light tags, a light rim and a soft halo under every node.
+function neuStylesheet(base) {
+  return [
+    ...base,
+    {
+      selector: "node",
+      style: {
+        color: "#3b4458",
+        "font-weight": 600,
+        "text-background-color": "#e8edf4",
+        "text-background-opacity": 0.92,
+        "text-background-shape": "roundrectangle",
+        "text-background-padding": 3,
+        "border-color": "#f7f9fc",
+        "border-width": 3,
+        "underlay-color": "#a3b1c6",
+        "underlay-opacity": 0.32,
+        "underlay-padding": 6,
+        "underlay-shape": "ellipse",
+        "transition-property": "opacity, width, height, border-width, underlay-opacity, underlay-padding",
+        "transition-duration": 220,
+      },
+    },
+    { selector: 'edge[relation = "observed"], edge[relation = "reported"]', style: { "line-color": "#9aa6bb", "target-arrow-color": "#9aa6bb" } },
+    { selector: "edge.labelled", style: { color: "#56607a", "text-background-color": "#e8edf4" } },
+    { selector: "node:active", style: { "overlay-opacity": 0 } },
+    { selector: "node.selected", style: { "border-color": "#ffffff", "underlay-color": "#5b6cff", "underlay-opacity": 0.3, "underlay-padding": 11 } },
+    { selector: "edge.selected", style: { "line-color": "#5b6cff", "target-arrow-color": "#5b6cff" } },
+    { selector: ".match", style: { "border-color": "#f59e0b", "underlay-color": "#f59e0b", "underlay-opacity": 0.35 } },
+    { selector: ".faded", style: { opacity: 0.16 } },
+    { selector: ".filtered", style: { display: "none" } },
+  ];
 }

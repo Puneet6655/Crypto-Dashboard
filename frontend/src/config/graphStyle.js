@@ -25,7 +25,7 @@ export const relationInfo = (relation) =>
 
 // Layouts the analyst can pick. Each value is passed straight to cy.layout().
 export const LAYOUTS = {
-  cose: { label: "Force (spread out)", options: { name: "cose", nodeRepulsion: 9000, idealEdgeLength: 90 } },
+  cose: { label: "Force (spread out)", options: { name: "cose", nodeRepulsion: 9000, idealEdgeLength: 90, randomize: true } },
   breadthfirst: { label: "Flow (top to bottom)", options: { name: "breadthfirst", directed: true, spacingFactor: 1.3 } },
   concentric: { label: "Rings (busiest in middle)", options: { name: "concentric", minNodeSpacing: 40 } },
   circle: { label: "Circle", options: { name: "circle" } },

@@ -211,3 +211,47 @@ def test_default_live_lookup_adds_the_live_xgboost_score(registry, monkeypatch):
     assert len(ids) == len(set(ids)) and model[0]["evidence_ids"][0] in ids
     finding_ids = [f["id"] for f in body["findings"]]
     assert len(finding_ids) == len(set(finding_ids))
+
+
+def test_dashboard_lookup_skips_the_score_and_asks_for_it_separately(registry, monkeypatch):
+    import app.ml.registry as reg_module
+
+    monkeypatch.setattr(reg_module, "get_model_registry", lambda: registry)
+    use_provider()
+    use_fake_store()
+    from app.ml.live_scoring import warm_up
+
+    assert warm_up(registry) is True
+    body = client.post("/api/investigations", json={
+        "mode": "crypto_investigation", "input_type": "bitcoin_address", "value": SUBJECT, "method": "live_lookup",
+        "model_score": False}).json()
+    assert body["explanation"] is None
+    assert not any(f["kind"] == "model_output" for f in body["findings"])
+    assert not any("No model has scored" in l for l in body["limitations"])
+    assert any("requested separately" in l for l in body["limitations"])
+    tx_nodes = [n for n in body["graph"]["nodes"] if n["type"] == "transaction"]
+    assert tx_nodes and all(n["details"]["block_time"] for n in tx_nodes)
+
+    for family in ("xgboost", "random_forest"):
+        score = client.post("/api/investigations/model-score", json={"address": SUBJECT, "family": family})
+        assert score.status_code == 200, score.text
+        data = score.json()
+        assert data["benchmark"] == "live" and data["model"]["family"] == family and 0 <= data["score"] <= 1
+        assert data["explanation"]["features"]
+
+
+def test_model_score_endpoint_refusals(registry, monkeypatch):
+    import app.ml.registry as reg_module
+
+    monkeypatch.setattr(reg_module, "get_model_registry", lambda: registry)
+    use_provider()
+    bad = client.post("/api/investigations/model-score", json={"address": "0x" + "1" * 40})
+    assert bad.status_code == 422
+    monkeypatch.setattr(registry, "warm", False, raising=False)
+    cold = client.post("/api/investigations/model-score", json={"address": SUBJECT})
+    assert cold.status_code == 503 and "loading" in cold.json()["detail"]
+    from app.ml.live_scoring import warm_up
+
+    assert warm_up(registry) is True
+    quiet = client.post("/api/investigations/model-score", json={"address": QUIET})
+    assert quiet.status_code == 422

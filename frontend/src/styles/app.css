@@ -551,3 +551,11 @@ button.link[data-case-type] { cursor: pointer; }
 .expand-note { margin: 4px 0 6px; padding: 6px 10px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); }
 .expand-note.expand-warning { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .expand-note.expand-error { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+
+/* Look picker at the bottom of the side menu (Soft / Web3 / Classic) */
+.design-picker { margin-top: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); }
+.design-picker button { border: 0; background: transparent; color: var(--side-muted); font-size: 12px; font-weight: 600; padding: 5px 4px; border-radius: 7px; }
+.design-picker button:hover { color: #fff; }
+.design-picker button.on { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.design-picker + .sidebar-user { margin-top: 0; }

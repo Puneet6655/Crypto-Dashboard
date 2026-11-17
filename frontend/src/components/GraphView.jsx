@@ -3,6 +3,8 @@ import GraphCanvas from "./GraphCanvas.jsx";
 import { LAYOUTS, NODE_TYPES, RELATIONS, nodeTypeInfo, relationInfo } from "../config/graphStyle.js";
 import { WEB3_DESIGN } from "../config/w3Design.js";
 import W3Scanner, { W3Idle } from "../w3/W3Scanner.jsx";
+import NodeActionBar from "../investigate/NodeActionBar.jsx";
+import ActivityTimeline, { timelinePoints } from "../investigate/ActivityTimeline.jsx";
 
 // Centre column. Shows the idle, loading, error, cancelled and empty states,
 // or the interactive graph once a result has arrived.
@@ -11,7 +13,12 @@ export default function GraphView({ status, error, result, selectedId, onSelect,
     return (
       <section className="card graph state">
         {WEB3_DESIGN && <W3Idle />}
-        {WEB3_DESIGN ? "Paste an address, transaction or website on the left, then press Investigate." : "Choose a mode and a case, then press Start Investigation."}
+        {WEB3_DESIGN ? (
+          <div className="inv-idle-text">
+            <strong>Nothing investigated yet</strong>
+            <span className="muted">Paste an address, transaction or website above and press Investigate. Bitcoin addresses get a live model score automatically.</span>
+          </div>
+        ) : "Choose a mode and a case, then press Start Investigation."}
       </section>
     );
   }
@@ -74,6 +81,10 @@ function GraphExplorer({ result, selectedId, onSelect, expand }) {
   const [hiddenRelations, setHiddenRelations] = useState(() => new Set());
   const [search, setSearch] = useState("");
   const [showEdgeLabels, setShowEdgeLabels] = useState(false);
+  // Web3 / Soft designs: transactions on a time line; dragging across it hides the others in the graph.
+  const points = useMemo(() => (WEB3_DESIGN ? timelinePoints(result) : []), [result]);
+  const [range, setRange] = useState(null);
+  const hiddenIds = useMemo(() => rangeHidden(result, points, range), [result, points, range]);
 
   // Counts for the legend. useMemo skips the work unless the graph changes.
   const typeCounts = useMemo(() => countBy(nodes, "type"), [nodes]);
@@ -175,19 +186,26 @@ function GraphExplorer({ result, selectedId, onSelect, expand }) {
         </div>
       )}
 
-      <GraphCanvas
-        nodes={nodes}
-        edges={edges}
-        selectedId={selectedId}
-        onSelect={onSelect}
-        layoutName={layoutName}
-        layoutRun={layoutRun}
-        hiddenTypes={hiddenTypes}
-        hiddenRelations={hiddenRelations}
-        matchIds={matchIds}
-        showEdgeLabels={showEdgeLabels}
-        cyRef={cyRef}
-      />
+      <div className="inv-canvas">
+        {WEB3_DESIGN && expand && <NodeActionBar result={result} selectedId={selectedId} inv={expand} onSelect={onSelect} />}
+        <GraphCanvas
+          nodes={nodes}
+          edges={edges}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          layoutName={layoutName}
+          layoutRun={layoutRun}
+          hiddenTypes={hiddenTypes}
+          hiddenRelations={hiddenRelations}
+          hiddenIds={hiddenIds}
+          matchIds={matchIds}
+          showEdgeLabels={showEdgeLabels}
+          cyRef={cyRef}
+        />
+      </div>
+      {points.length >= 3 && (
+        <ActivityTimeline points={points} selectedId={selectedId} onSelect={onSelect} range={range} onRange={setRange} />
+      )}
 
       {/* The legend doubles as the filter: click a chip to hide or show that kind. */}
       <div className="legend" aria-label="Legend and filters">
@@ -264,4 +282,24 @@ function countBy(items, key) {
   return Object.fromEntries(
     Object.entries(counts).sort(([a], [b]) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99))
   );
+}
+
+// Nodes the time-line filter hides: transactions outside the period, and addresses left with no visible
+// transaction (the looked-up address always stays).
+function rangeHidden(result, points, range) {
+  if (!range || !points.length) return null;
+  const x = (p) => (range.useTime ? p.time : p.height);
+  const hidden = new Set(points.filter((p) => !p.pending && (x(p) < range.from || x(p) > range.to)).map((p) => p.id));
+  if (!hidden.size) return null;
+  const keep = result.graph.nodes[0]?.id;
+  const txIds = new Set(points.map((p) => p.id));
+  const visibleTx = new Map();
+  for (const e of result.graph.edges) {
+    for (const [addr, tx] of [[e.source, e.target], [e.target, e.source]]) {
+      if (!txIds.has(tx) || txIds.has(addr)) continue;
+      visibleTx.set(addr, (visibleTx.get(addr) ?? false) || !hidden.has(tx));
+    }
+  }
+  for (const [addr, anyVisible] of visibleTx) if (!anyVisible && addr !== keep) hidden.add(addr);
+  return hidden;
 }

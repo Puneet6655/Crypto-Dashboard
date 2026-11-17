@@ -1,9 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MODES, compatibleMethods } from "../config/modes.js";
 import { FIXTURE_CASES } from "../data/fixtures.js";
 import { runFixtureInvestigation, validateInput } from "../services/runFixtureInvestigation.js";
 import { startInvestigation, streamGraphExpand } from "../api/client.js";
 import { EXPAND_NODE_CAP, EXPAND_PER_NODE, expandableAddress, mergeExpansion } from "../services/expandInvestigationGraph.js";
+import { MODEL_METHODS, normalizeBitcoin, requestModelScore, scoreKey, withModelScore } from "../services/modelScore.js";
 
 const FIRST_MODE = MODES[0];
 const firstReadyMethod = (mode, inputType) =>
@@ -36,6 +37,12 @@ export function useInvestigation() {
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const [expandNote, setExpandNote] = useState(null); // { kind: "info" | "warning" | "error", text }
   const expandRef = useRef(null);
+  // Live model scores, kept for the whole visit: "family|address" -> { status: loading | done | error, data, error, startedAt }.
+  // Every Bitcoin address lookup asks for one automatically; any other Bitcoin address in the graph can be scored on request.
+  const [scores, setScores] = useState({});
+  const scoresRef = useRef(scores);
+  scoresRef.current = scores;
+  const [modelFamily, setModelFamilyState] = useState("xgboost");
 
   // Merge a change into the form and keep dependent choices valid.
   function handleFormChange(changes) {
@@ -90,6 +97,11 @@ export function useInvestigation() {
     const controller = new AbortController();
     requestRef.current = controller;
 
+    // Every Bitcoin address lookup gets the live model score, asked for at the same time as the lookup.
+    const scoredHere = request.inputType === "bitcoin_address" && request.method !== "fixture_review"
+      && !MODEL_METHODS.has(request.method);
+    if (scoredHere) scoreAddress(normalizeBitcoin(request.value), modelFamily);
+
     setStatus("loading");
     setStartedAt(Date.now());
     setResult(null);
@@ -106,6 +118,12 @@ export function useInvestigation() {
       if (data === null) {
         setStatus("empty");
         return;
+      }
+      // A model method (or an older server) already returns the score: remember it like a separate one.
+      if (data.explanation?.benchmark === "live" && data.explanation.address) {
+        const family = data.explanation.model?.family ?? "xgboost";
+        setScores((old) => ({ ...old, [scoreKey(family, data.explanation.address)]: { status: "done", data: data.explanation } }));
+        if (MODEL_METHODS.has(request.method)) setModelFamilyState(family);
       }
       setResult(data);
       setSelectedId(data.graph.nodes[0]?.id ?? "");
@@ -182,6 +200,44 @@ export function useInvestigation() {
     }
   }
 
+  // Ask for the live score of one Bitcoin address (once per model, unless force).
+  async function scoreAddress(address, family = modelFamily, { force = false } = {}) {
+    if (!address) return;
+    const key = scoreKey(family, address);
+    const known = scoresRef.current[key];
+    if (!force && known && known.status !== "error") return;
+    const loading = { status: "loading", startedAt: Date.now() };
+    scoresRef.current = { ...scoresRef.current, [key]: loading };
+    setScores((old) => ({ ...old, [key]: loading }));
+    try {
+      const data = await requestModelScore(address, family);
+      // Only replace our own "loading" entry (the lookup itself may have brought the score meanwhile).
+      setScores((old) => (old[key] === loading ? { ...old, [key]: { status: "done", data } } : old));
+    } catch (err) {
+      setScores((old) => (old[key] === loading ? { ...old, [key]: { status: "error", error: err.message } } : old));
+    }
+  }
+
+  // Switch model (XGBoost / Random Forest): the looked-up address is scored with it too.
+  function setModelFamily(family) {
+    setModelFamilyState(family);
+    const subject = subjectAddress(result);
+    if (subject) scoreAddress(subject, family);
+  }
+
+  const scoreOf = (address, family = modelFamily) => (address ? scores[scoreKey(family, address)] ?? null : null);
+
+  // When the looked-up address's score (for the chosen model) is in, show it in the result itself:
+  // the Findings, Why Flagged? and Evidence tabs then include it, in every design.
+  useEffect(() => {
+    const subject = subjectAddress(result);
+    if (!subject) return;
+    const entry = scores[scoreKey(modelFamily, subject)];
+    if (entry?.status !== "done" || result.explanation === entry.data) return;
+    const id = result.investigation_id;
+    setResult((old) => (old?.investigation_id === id ? withModelScore(old, entry.data) : old));
+  }, [result, scores, modelFamily]);
+
   function handleCancel() {
     requestRef.current?.abort();
     requestRef.current = null;
@@ -197,7 +253,14 @@ export function useInvestigation() {
   return {
     form, status, result, error, selectedId, highlightedEvidence, activeTab, startedAt,
     expandingId, expandedIds, expandNote, canExpand: (id) => Boolean(expandableAddress(result, id)), expandNode,
+    modelFamily, setModelFamily, scoreAddress, scoreOf, subjectAddress: subjectAddress(result),
     setSelectedId, setActiveTab,
     handleFormChange, handleCaseChange, handleStart, handleCancel, handleEvidenceClick, investigateLive,
   };
+}
+
+// The Bitcoin address an investigation was about, or null (transactions, other chains, demo cases).
+function subjectAddress(result) {
+  if (!result || result.data_mode !== "live" || result.input?.type !== "bitcoin_address") return null;
+  return normalizeBitcoin(result.input.value);
 }

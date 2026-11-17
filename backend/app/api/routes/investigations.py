@@ -3,8 +3,11 @@
 Each investigation is saved with everything it fetched (address totals and
 transactions), after the response is sent. Saved cases can be listed and reopened.
 """
+from typing import Literal
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel, Field
 
 from app.config import Settings, get_settings
 from app.db import NullStore, run_safely
@@ -16,6 +19,7 @@ from app.providers.solana_alchemy import SolanaProvider
 from app.schemas.investigation import InvestigationRequest, InvestigationResult
 from app.services.investigation_service import UnsupportedInvestigation, run_investigation
 from app.store import RecordingProvider, get_store
+from app.validation import is_bitcoin_address, normalize_address
 
 router = APIRouter(prefix="/api/investigations", tags=["investigations"])
 
@@ -49,6 +53,42 @@ async def create_investigation(
         raise HTTPException(status_code=exc.status_code, detail=exc.message, headers=exc.headers())
     background.add_task(_save_everything, store, recorder, result)
     return result
+
+
+class ModelScoreRequest(BaseModel):
+    address: str = Field(min_length=20, max_length=100)
+    family: Literal["xgboost", "random_forest"] = "xgboost"
+
+
+@router.post("/model-score")
+async def model_score(request: ModelScoreRequest, provider: BitcoinProvider = Depends(get_bitcoin_provider)) -> dict:
+    """Live model score with its SHAP explanation for one Bitcoin address.
+
+    The dashboard calls this at the same time as the lookup (which it sends with model_score=False), so every
+    Bitcoin address shows a score without picking a model method, and the graph does not wait for it.
+    The answer has the same shape as an investigation's "explanation".
+    """
+    from app.ml.live_scoring import NoActivity, is_ready, score_live
+    from app.ml.registry import ModelsUnavailable, get_model_registry
+
+    if not is_bitcoin_address(request.address):
+        raise HTTPException(status_code=422, detail="That does not look like a mainnet Bitcoin address.")
+    registry = get_model_registry()
+    if not registry.available:
+        raise HTTPException(status_code=503, detail="No trained models on this server.")
+    if not is_ready(registry):
+        raise HTTPException(status_code=503,
+                            detail="The model is still loading after the server started. Try again in a minute.")
+    try:
+        return await score_live(provider, normalize_address(request.address), request.family, registry)
+    except NoActivity as exc:
+        raise HTTPException(status_code=422, detail=str(exc) or "The address has no confirmed transactions to score.")
+    except ModelsUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except KeyError as exc:
+        raise HTTPException(status_code=422, detail=f"No live-compatible model for {request.family} ({exc}).")
+    except ProviderError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message, headers=exc.headers())
 
 
 @router.get("")
