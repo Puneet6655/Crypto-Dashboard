@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import GraphCanvas from "./GraphCanvas.jsx";
 import { LAYOUTS, NODE_TYPES, RELATIONS, nodeTypeInfo, relationInfo } from "../config/graphStyle.js";
-import { WEB3_DESIGN } from "../config/w3Design.js";
 import W3Scanner, { W3Idle } from "../w3/W3Scanner.jsx";
 import NodeActionBar from "../investigate/NodeActionBar.jsx";
 import ActivityTimeline, { timelinePoints } from "../investigate/ActivityTimeline.jsx";
@@ -12,13 +11,11 @@ export default function GraphView({ status, error, result, selectedId, onSelect,
   if (status === "idle") {
     return (
       <section className="card graph state">
-        {WEB3_DESIGN && <W3Idle />}
-        {WEB3_DESIGN ? (
-          <div className="inv-idle-text">
-            <strong>Nothing investigated yet</strong>
-            <span className="muted">Paste an address, transaction or website above and press Investigate. Bitcoin addresses get a live model score automatically.</span>
-          </div>
-        ) : "Choose a mode and a case, then press Start Investigation."}
+        <W3Idle />
+        <div className="inv-idle-text">
+          <strong>Nothing investigated yet</strong>
+          <span className="muted">Paste an address, transaction or website above and press Investigate. Bitcoin addresses get a live model score automatically.</span>
+        </div>
       </section>
     );
   }
@@ -58,7 +55,7 @@ function LoadingState({ startedAt, methodLabel, onCancel }) {
   return (
     <section className="card graph state" role="status" aria-live="polite">
       <div className="loading">
-        {WEB3_DESIGN ? <W3Scanner /> : <div className="spinner" aria-hidden="true" />}
+        <W3Scanner />
         <div>Running {methodLabel}...</div>
         <div className="small muted">{seconds.toFixed(1)} s</div>
         {seconds > 5 && <div className="small muted">Live lookups can take a while when mempool.space is busy.</div>}
@@ -81,8 +78,8 @@ function GraphExplorer({ result, selectedId, onSelect, expand }) {
   const [hiddenRelations, setHiddenRelations] = useState(() => new Set());
   const [search, setSearch] = useState("");
   const [showEdgeLabels, setShowEdgeLabels] = useState(false);
-  // Web3 / Soft designs: transactions on a time line; dragging across it hides the others in the graph.
-  const points = useMemo(() => (WEB3_DESIGN ? timelinePoints(result) : []), [result]);
+  // Transactions on a time line; dragging across it hides the others in the graph.
+  const points = useMemo(() => timelinePoints(result), [result]);
   const [range, setRange] = useState(null);
   const hiddenIds = useMemo(() => rangeHidden(result, points, range), [result, points, range]);
 
@@ -187,7 +184,7 @@ function GraphExplorer({ result, selectedId, onSelect, expand }) {
       )}
 
       <div className="inv-canvas">
-        {WEB3_DESIGN && expand && <NodeActionBar result={result} selectedId={selectedId} inv={expand} onSelect={onSelect} />}
+        {expand && <NodeActionBar result={result} selectedId={selectedId} inv={expand} onSelect={onSelect} />}
         <GraphCanvas
           nodes={nodes}
           edges={edges}

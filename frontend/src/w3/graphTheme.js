@@ -1,36 +1,7 @@
-// Web3 mode look for the Investigate graph (Cytoscape): light labels on dark tags, a soft glow under every node,
-// a brighter glow on the selected one. Added after the normal stylesheet, so later rules win.
-import { NEU_DESIGN } from "../config/w3Design.js";
+// Soft (neumorphism) look for the Investigate graph (Cytoscape). Added after the normal stylesheet, so later rules win.
 
 export function w3Stylesheet(base) {
-  return NEU_DESIGN ? neuStylesheet(base) : [
-    ...base,
-    {
-      selector: "node",
-      style: {
-        color: "#ede9fe",
-        "text-background-color": "#140c2c",
-        "text-background-opacity": 0.85,
-        "text-background-shape": "roundrectangle",
-        "text-background-padding": 3,
-        "border-color": "#0b0718",
-        "underlay-color": "#a78bfa",
-        "underlay-opacity": 0.14,
-        "underlay-padding": 7,
-        "underlay-shape": "ellipse",
-        "transition-property": "opacity, width, height, border-width, underlay-opacity, underlay-padding",
-        "transition-duration": 220,
-      },
-    },
-    { selector: 'edge[relation = "observed"], edge[relation = "reported"]', style: { "line-color": "#7d75ab", "target-arrow-color": "#7d75ab" } },
-    { selector: "edge.labelled", style: { color: "#c4b5fd", "text-background-color": "#140c2c" } },
-    { selector: "node:active", style: { "overlay-opacity": 0 } },
-    { selector: "node.selected", style: { "border-color": "#f0abfc", "underlay-color": "#f0abfc", "underlay-opacity": 0.28, "underlay-padding": 10 } },
-    { selector: "edge.selected", style: { "line-color": "#f0abfc", "target-arrow-color": "#f0abfc" } },
-    { selector: ".match", style: { "border-color": "#fde047", "underlay-color": "#fde047", "underlay-opacity": 0.35 } },
-    { selector: ".faded", style: { opacity: 0.12 } },
-    { selector: ".filtered", style: { display: "none" } },
-  ];
+  return neuStylesheet(base);
 }
 
 // Entrance: the layout is worked out first without drawing, then every node flies out from the middle to its

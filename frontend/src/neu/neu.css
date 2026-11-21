@@ -1,5 +1,5 @@
-/* Soft UI (neumorphism) look. Everything is scoped to html.neu, which App.jsx sets only when this design is on
-   (config/w3Design.js), so the Classic and Web3 looks never pick any of it up.
+/* Soft UI (neumorphism) look. The dashboard's only design. Everything is scoped to html.neu,
+   which App.jsx always sets.
    Idea: one soft surface colour everywhere; things are "raised" (light from the top left, shade to the bottom right)
    or "pressed" (the same shadows inside). Inputs, wells and active choices are pressed; cards and buttons are raised. */
 
@@ -64,10 +64,6 @@ html.neu .nav-item.active .icon { color: var(--accent); }
 html.neu .nav-count { background: var(--neu-accent-grad); box-shadow: var(--neu-raise-xs); }
 html.neu .nav-count-alert { background: linear-gradient(135deg, #f0626b, #d93a45); }
 html.neu .nav-badge { color: var(--warn); border-color: rgba(181, 116, 0, 0.35); }
-html.neu .design-picker { background: var(--neu-bg); border: 0; box-shadow: var(--neu-press-sm); border-radius: 12px; padding: 4px; }
-html.neu .design-picker button { color: var(--muted); border-radius: 9px; }
-html.neu .design-picker button:hover { color: var(--text); }
-html.neu .design-picker button.on { background: var(--neu-bg); color: var(--accent); box-shadow: var(--neu-raise-xs); }
 html.neu .sidebar-user { border-top: 0; padding-top: 4px; }
 html.neu .user-chip { color: var(--text); border-radius: 14px; }
 html.neu .user-chip:hover, html.neu .user-chip.active { background: transparent; box-shadow: var(--neu-press-sm); }

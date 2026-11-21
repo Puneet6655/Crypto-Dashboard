@@ -1,14 +1,13 @@
-// Web3 mode look for the graph explorer (Sigma, WebGL): light labels, dark hover cards, dim links,
-// and node colours tuned for a dark background. The Soft (neumorphism) look swaps in light-surface colours.
-import { NEU_DESIGN } from "../config/w3Design.js";
+// Soft (neumorphism) look for the graph explorer (Sigma, WebGL): light hover cards, dim links and
+// calm, saturated node colours on a light surface.
 
-export const W3_FADED = NEU_DESIGN ? "#d3dae5" : "#2a2342";
-export const W3_EDGE = NEU_DESIGN ? "#b4bfd0" : "#4b4470";
-export const W3_EDGE_IN = NEU_DESIGN ? "#0f9f8f" : "#5eead4";   // money coming into the focused node
-export const W3_EDGE_OUT = NEU_DESIGN ? "#d94fa8" : "#f0abfc";  // money leaving it
+export const W3_FADED = "#d3dae5";
+export const W3_EDGE = "#b4bfd0";
+export const W3_EDGE_IN = "#0f9f8f";   // money coming into the focused node
+export const W3_EDGE_OUT = "#d94fa8";  // money leaving it
 
 // Brighter versions of the explorer's node colours, so they glow on dark (Soft: calm, saturated tones on light).
-export const W3_KIND_COLORS = NEU_DESIGN ? {
+export const W3_KIND_COLORS = {
   seed: "#6d5dfc",
   address: "#3d7bf2",
   frontier: "#9fb6e8",
@@ -17,15 +16,6 @@ export const W3_KIND_COLORS = NEU_DESIGN ? {
   listed: "#e5484d",
   dust: "#a0a9b8",
   more: "#e09b1a",
-} : {
-  seed: "#c084fc",
-  address: "#60a5fa",
-  frontier: "#3b4f86",
-  exchange: "#f472b6",
-  hub: "#2dd4bf",
-  listed: "#f87171",
-  dust: "#6b7280",
-  more: "#fbbf24",
 };
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -57,22 +47,22 @@ function drawHover(ctx, data, settings) {
   const x = data.x + data.size + 8;
   const y = data.y - size / 2 - 6;
   ctx.save();
-  ctx.shadowColor = NEU_DESIGN ? "rgba(163, 177, 198, 0.7)" : "rgba(0,0,0,0.5)";
+  ctx.shadowColor = "rgba(163, 177, 198, 0.7)";
   ctx.shadowBlur = 12;
   roundRect(ctx, x, y, w, size + 12, 7);
-  ctx.fillStyle = NEU_DESIGN ? "rgba(236, 240, 246, 0.97)" : "rgba(24, 16, 52, 0.95)";
+  ctx.fillStyle = "rgba(236, 240, 246, 0.97)";
   ctx.fill();
   ctx.restore();
-  ctx.strokeStyle = NEU_DESIGN ? "rgba(255, 255, 255, 0.9)" : "rgba(196, 181, 253, 0.35)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
   ctx.lineWidth = 1;
   roundRect(ctx, x, y, w, size + 12, 7);
   ctx.stroke();
-  ctx.fillStyle = NEU_DESIGN ? "#2f3747" : "#f1eefc";
+  ctx.fillStyle = "#2f3747";
   ctx.fillText(label, x + 8, data.y + size / 3);
 }
 
 export const W3_SIGMA_SETTINGS = {
-  labelColor: { color: NEU_DESIGN ? "#3b4458" : "#e9e5ff" },
+  labelColor: { color: "#3b4458" },
   labelFont: "Inter, system-ui, sans-serif",
   labelSize: 12,
   labelWeight: "500",

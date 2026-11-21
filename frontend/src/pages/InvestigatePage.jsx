@@ -1,11 +1,9 @@
 import { METHODS } from "../config/modes.js";
-import ControlsPanel from "../components/ControlsPanel.jsx";
 import GraphView from "../components/GraphView.jsx";
 import EntityDetails from "../components/EntityDetails.jsx";
 import ResultTabs from "../components/ResultTabs.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { AddToCaseButton } from "../components/AddToCaseMenu.jsx";
-import { WEB3_DESIGN } from "../config/w3Design.js";
 import RiskPanel from "../investigate/RiskPanel.jsx";
 import RedFlagsPanel from "../investigate/RedFlagsPanel.jsx";
 import W3SearchPanel from "../w3/W3SearchPanel.jsx";
@@ -26,9 +24,7 @@ export default function InvestigatePage({ investigation: inv }) {
       <PageHeader
         icon="investigate"
         title="Investigate"
-        subtitle={WEB3_DESIGN
-          ? "Look up an address, transaction or website on Bitcoin, Ethereum, Base or Solana. Click anything in the graph for its actions."
-          : "Look up a Bitcoin address or transaction, or open a demo case. Right-click any address or transaction to add it to a case."}
+        subtitle={"Look up an address, transaction or website on Bitcoin, Ethereum, Base or Solana. Click anything in the graph for its actions."}
       >
         {subject && <AddToCaseButton item={subject} />}
         {graphLink(result) && (
@@ -41,66 +37,31 @@ export default function InvestigatePage({ investigation: inv }) {
         </span>
       </PageHeader>
 
-      {WEB3_DESIGN ? (
-        // Web3 and Soft designs: one smart search bar across the top, then the graph with the risk score
-        // and the details beside it. Bitcoin addresses get the live model score automatically.
-        <>
-          <W3SearchPanel layout="bar" form={inv.form} onFormChange={inv.handleFormChange} onStart={inv.handleStart} isLoading={inv.status === "loading"} />
-          <div className="inv-layout">
-            <GraphView
-              status={inv.status}
-              error={inv.error}
-              result={result}
-              selectedId={inv.selectedId}
-              onSelect={inv.setSelectedId}
-              onCancel={inv.handleCancel}
-              startedAt={inv.startedAt}
-              methodLabel={METHODS.find((m) => m.id === inv.form.method)?.label ?? inv.form.method}
-              expand={inv}
-            />
-            <div className="w3-side inv-side">
-              {inv.status === "done" && (
-                <RiskPanel key={result?.investigation_id} inv={inv} result={result} selectedId={inv.selectedId} onShowWhy={showWhy} />
-              )}
-              {inv.status === "done" && <RedFlagsPanel key={`rf-${result?.investigation_id}`} inv={inv} />}
-              <div key={inv.selectedId || "none"} className="w3-slide-in">
-                <EntityDetails result={result} selectedId={inv.selectedId} onSelect={inv.setSelectedId} onEvidenceClick={inv.handleEvidenceClick} expand={inv} />
-              </div>
-            </div>
-          </div>
-        </>
-      ) : (
-        <div className="layout">
-          <ControlsPanel
-            form={inv.form}
-            onFormChange={inv.handleFormChange}
-            onCaseChange={inv.handleCaseChange}
-            onStart={inv.handleStart}
-            isLoading={inv.status === "loading"}
-          />
-          <GraphView
-            status={inv.status}
-            error={inv.error}
-            result={result}
-            selectedId={inv.selectedId}
-            onSelect={inv.setSelectedId}
-            onCancel={inv.handleCancel}
-            startedAt={inv.startedAt}
-            methodLabel={METHODS.find((m) => m.id === inv.form.method)?.label ?? inv.form.method}
-            expand={inv}
-          />
-          <div>
-            <EntityDetails
-              result={result}
-              selectedId={inv.selectedId}
-              onSelect={inv.setSelectedId}
-              onEvidenceClick={inv.handleEvidenceClick}
-              expand={inv}
-            />
-            {inv.status === "done" && <RedFlagsPanel key={`rf-${result?.investigation_id}`} inv={inv} />}
+      {/* One smart search bar across the top, then the graph with the risk score and the details beside it.
+          Bitcoin addresses get the live model score automatically. */}
+      <W3SearchPanel layout="bar" form={inv.form} onFormChange={inv.handleFormChange} onStart={inv.handleStart} isLoading={inv.status === "loading"} />
+      <div className="inv-layout">
+        <GraphView
+          status={inv.status}
+          error={inv.error}
+          result={result}
+          selectedId={inv.selectedId}
+          onSelect={inv.setSelectedId}
+          onCancel={inv.handleCancel}
+          startedAt={inv.startedAt}
+          methodLabel={METHODS.find((m) => m.id === inv.form.method)?.label ?? inv.form.method}
+          expand={inv}
+        />
+        <div className="w3-side inv-side">
+          {inv.status === "done" && (
+            <RiskPanel key={result?.investigation_id} inv={inv} result={result} selectedId={inv.selectedId} onShowWhy={showWhy} />
+          )}
+          {inv.status === "done" && <RedFlagsPanel key={`rf-${result?.investigation_id}`} inv={inv} />}
+          <div key={inv.selectedId || "none"} className="w3-slide-in">
+            <EntityDetails result={result} selectedId={inv.selectedId} onSelect={inv.setSelectedId} onEvidenceClick={inv.handleEvidenceClick} expand={inv} />
           </div>
         </div>
-      )}
+      </div>
 
       <ResultTabs
         result={result}

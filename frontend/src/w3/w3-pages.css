@@ -1,5 +1,5 @@
 /* Web3 mode page styles (Investigate first; later pages add their own sections).
-   Classes start with "w3-" and the rest is scoped to html.w3, so normal mode is untouched. */
+   Classes start with "w3-"; the Soft look (neu/neu.css) restyles them. */
 
 /* ---------- Shared: chain badges ---------- */
 .w3-chain { display: inline-flex; align-items: center; gap: 5px; padding: 1px 9px 1px 6px; border-radius: 999px; font-size: 12px; font-weight: 600;
@@ -18,7 +18,6 @@
   color: var(--chain); background: color-mix(in srgb, var(--chain) 12%, transparent); border: 1px solid color-mix(in srgb, var(--chain) 45%, transparent);
   transition: transform 0.15s, background 0.15s; }
 .w3-hint-chip:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--chain) 24%, transparent); }
-html.w3 .controls input[type="text"]:focus { box-shadow: 0 0 0 3px var(--accent-soft), 0 0 24px rgba(167, 139, 250, 0.25); }
 
 /* ---------- Investigate: scanner (loading) and idle orbit ---------- */
 .w3-scan { position: relative; width: 168px; height: 168px; margin: 0 auto 12px; }
@@ -38,14 +37,8 @@ html.w3 .controls input[type="text"]:focus { box-shadow: 0 0 0 3px var(--accent-
 .w3-scan-coin svg { animation: w3-spin 9s linear infinite reverse; }
 .w3-scan-idle .w3-scan-orbit, .w3-scan-idle .w3-scan-coin svg { animation-duration: 24s; }
 .w3-scan-idle .w3-scan-core { animation-duration: 3s; }
-html.w3 .graph.state { min-height: 420px; gap: 8px; align-content: center; }
 
 /* ---------- Investigate: graph surface ---------- */
-html.w3 .graph-canvas { height: 520px; border-color: rgba(196, 181, 253, 0.18); box-shadow: inset 0 0 60px rgba(139, 92, 246, 0.12); }
-html.w3 .graph-tooltip { border-color: rgba(196, 181, 253, 0.3); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(139, 92, 246, 0.2);
-  animation: w3-pop 0.14s ease-out both; }
-html.w3 .legend .chip { transition: transform 0.15s, border-color 0.15s, opacity 0.2s; }
-html.w3 .legend .chip:hover { transform: translateY(-1px); }
 
 /* ---------- Investigate: right column ---------- */
 .w3-side { display: grid; gap: calc(var(--space) * 2); align-content: start; min-width: 0; }
@@ -72,28 +65,9 @@ html.w3 .legend .chip:hover { transform: translateY(-1px); }
 .w3-gauge-pop dd { margin: 0; word-break: break-word; }
 
 /* ---------- Investigate: tabs ---------- */
-html.w3 .tab { position: relative; transition: color 0.2s, background 0.2s; }
-html.w3 .tab::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -9px; height: 2px; border-radius: 2px;
-  background: linear-gradient(90deg, #a78bfa, #f0abfc); transform: scaleX(0); transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
-html.w3 .tab.active { color: var(--text); background: rgba(167, 139, 250, 0.14); }
-html.w3 .tab.active::after { transform: scaleX(1); }
-html.w3 .tab-body { animation: w3-fade-up 0.3s ease-out both; }
-html.w3 .plain-list > li { animation: w3-fade-up 0.35s ease-out both; }
-html.w3 .plain-list > li:nth-child(2) { animation-delay: 40ms; }
-html.w3 .plain-list > li:nth-child(3) { animation-delay: 80ms; }
-html.w3 .plain-list > li:nth-child(n+4) { animation-delay: 120ms; }
 
 /* ---------- Graph explorer ---------- */
-html.w3 .sigma-canvas { border-color: rgba(196, 181, 253, 0.18);
-  background: radial-gradient(circle, rgba(196, 181, 253, 0.12) 1px, transparent 1px) 0 0 / 24px 24px,
-    radial-gradient(70% 60% at 50% 45%, rgba(91, 33, 182, 0.18), transparent 70%), rgba(8, 5, 20, 0.82);
-  box-shadow: inset 0 0 80px rgba(139, 92, 246, 0.12); }
 .w3-flow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; border-radius: var(--radius-sm); }
-html.w3 .sigma-empty { z-index: 3; }
-html.w3 button.secondary.w3-on { border-color: rgba(240, 171, 252, 0.6); color: #f5d0fe; background: rgba(240, 171, 252, 0.12);
-  box-shadow: 0 0 16px rgba(240, 171, 252, 0.2); }
-html.w3 .explorer-layout > .details { animation: w3-slide-left 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
-html.w3 .cap-meter span { background: linear-gradient(90deg, #7c3aed, #f0abfc); }
 
 .w3-menu { position: fixed; z-index: 1000; width: 230px; padding: 6px; border-radius: 12px; display: grid; gap: 1px;
   background: rgba(24, 16, 52, 0.97); border: 1px solid rgba(196, 181, 253, 0.28);
@@ -129,43 +103,19 @@ html.w3 .cap-meter span { background: linear-gradient(90deg, #7c3aed, #f0abfc); 
 @keyframes w3-pop { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .w3-menu, .w3-search-list, html.w3 .explorer-layout > .details,
-  .w3-scan *, .w3-hint, .w3-slide-in, .w3-gauge, .w3-gauge-pop, html.w3 .tab-body, html.w3 .plain-list > li { animation: none !important; }
+  .w3-menu, .w3-search-list,
+  .w3-scan *, .w3-hint, .w3-slide-in, .w3-gauge, .w3-gauge-pop { animation: none !important; }
 }
 
 /* ---------- Cases ---------- */
 .w3-case-chains { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .w3-case-chain { display: inline-flex; align-items: center; gap: 4px; }
 .w3-case-graph { display: inline-flex; flex-wrap: wrap; gap: 8px; }
-html.w3 .w3-graph-btn { border-color: rgba(196, 181, 253, 0.45); color: #ddd6fe; background: linear-gradient(135deg, rgba(124, 58, 237, 0.28), rgba(236, 72, 153, 0.14)); }
-html.w3 .w3-graph-btn:hover:not(:disabled) { color: #fff; border-color: #f0abfc; box-shadow: 0 0 20px rgba(240, 171, 252, 0.25); }
 .w3-item-chain { margin-top: 5px; }
-html.w3 .case-card { position: relative; overflow: hidden; transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.25s, box-shadow 0.25s; }
-html.w3 .case-card::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.3s;
-  background: radial-gradient(400px 160px at var(--mx, 50%) 0%, rgba(167, 139, 250, 0.22), transparent 70%); }
-html.w3 .case-card:hover { transform: translateY(-4px); border-color: rgba(196, 181, 253, 0.45); text-decoration: none;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), 0 0 30px rgba(139, 92, 246, 0.18); }
-html.w3 .case-card:hover::before { opacity: 1; }
-html.w3 .case-card .priority-high { box-shadow: 0 0 12px rgba(248, 113, 113, 0.35); }
-html.w3.mo-on .case-grid > .case-card { animation: w3-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
-html.w3.mo-on .case-grid > .case-card:nth-child(2) { animation-delay: 50ms; }
-html.w3.mo-on .case-grid > .case-card:nth-child(3) { animation-delay: 100ms; }
-html.w3.mo-on .case-grid > .case-card:nth-child(4) { animation-delay: 150ms; }
-html.w3.mo-on .case-grid > .case-card:nth-child(5) { animation-delay: 200ms; }
-html.w3.mo-on .case-grid > .case-card:nth-child(n+6) { animation-delay: 250ms; }
-html.w3 .items-table tbody tr { animation: w3-fade-up 0.35s ease-out both; transition: background 0.15s; }
-html.w3 .items-table tbody tr:nth-child(2) { animation-delay: 30ms; }
-html.w3 .items-table tbody tr:nth-child(3) { animation-delay: 60ms; }
-html.w3 .items-table tbody tr:nth-child(n+4) { animation-delay: 90ms; }
-html.w3 .items-table tbody tr:hover { background: rgba(167, 139, 250, 0.07); }
-html.w3 .case-header h1 { font-size: 26px; background: linear-gradient(90deg, #f5f3ff, #ddd6fe 60%, #f5d0fe); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
 /* The card-to-case morph (Chrome and Edge; other browsers just switch). */
 ::view-transition-group(*) { animation-duration: 0.45s; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.3s; }
-@media (prefers-reduced-motion: reduce) {
-  html.w3 .case-card, html.w3 .items-table tbody tr { animation: none !important; transition: none; }
-}
 
 /* ---------- Live alerts ---------- */
 .w3-pulse-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
@@ -260,9 +210,6 @@ html.w3 .case-header h1 { font-size: 26px; background: linear-gradient(90deg, #f
 .w3-bigsearch:focus-within { border-color: rgba(196, 181, 253, 0.6); box-shadow: 0 0 0 3px var(--accent-soft), 0 0 22px rgba(167, 139, 250, 0.22); }
 .w3-bigsearch.valid { border-color: rgba(52, 211, 153, 0.7); box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.14), 0 0 22px rgba(52, 211, 153, 0.2); }
 .w3-bigsearch.invalid { border-color: rgba(248, 113, 113, 0.7); box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.14), 0 0 22px rgba(248, 113, 113, 0.18); }
-html.w3 .w3-bigsearch input[type="text"] { flex: 1; min-width: 0; border: 0; background: transparent; box-shadow: none; padding: 12px 6px 12px 14px;
-  font-size: 13.5px; letter-spacing: 0.01em; outline: none; }
-html.w3 .w3-bigsearch input[type="text"]:focus { box-shadow: none; }
 .w3-field-btn { flex: none; display: grid; place-items: center; width: 30px; height: 30px; margin-right: 6px; padding: 0; border-radius: 8px;
   border: 0; background: rgba(255, 255, 255, 0.06); color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; transition: background 0.15s, color 0.15s; }
 .w3-field-btn:hover { background: rgba(255, 255, 255, 0.14); color: var(--text); }
@@ -288,11 +235,6 @@ html.w3 .w3-bigsearch input[type="text"]:focus { box-shadow: none; }
 .w3-advanced summary:hover { color: var(--text); }
 .w3-advanced[open] { display: grid; gap: 12px; }
 .w3-advanced[open] > .field { animation: w3-fade-up 0.25s ease-out both; }
-html.w3 .w3-start { width: 100%; padding: 12px 16px; font-size: 14.5px; font-weight: 700; border-radius: 12px; border: 0; color: #fff;
-  background: linear-gradient(120deg, color-mix(in srgb, var(--chain, #a78bfa) 85%, #7c3aed), #c026d3);
-  box-shadow: 0 6px 24px color-mix(in srgb, var(--chain, #a78bfa) 35%, transparent); transition: transform 0.15s, box-shadow 0.2s, opacity 0.2s; }
-html.w3 .w3-start:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 30px color-mix(in srgb, var(--chain, #a78bfa) 50%, transparent); }
-html.w3 .w3-start:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; filter: saturate(0.4); }
 .w3-enter { text-align: center; margin: -6px 0 0; }
 @media (prefers-reduced-motion: reduce) { .w3-detect, .w3-method, .w3-advanced[open] > .field { animation: none !important; } }
 

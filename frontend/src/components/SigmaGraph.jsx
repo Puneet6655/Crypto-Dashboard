@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import Sigma from "sigma";
 import { EdgeArrowProgram } from "sigma/rendering";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
-import { WEB3_DESIGN } from "../config/w3Design.js";
 import { W3_EDGE, W3_EDGE_IN, W3_EDGE_OUT, W3_FADED, W3_KIND_COLORS, W3_SIGMA_SETTINGS } from "../w3/sigmaTheme.js";
 
 // The WebGL drawing for advanced graph mode. Sigma draws with WebGL, so it stays smooth with
@@ -12,7 +11,6 @@ import { W3_EDGE, W3_EDGE_IN, W3_EDGE_OUT, W3_FADED, W3_KIND_COLORS, W3_SIGMA_SE
 // ForceAtlas2 arranges the nodes in a web worker (a background thread), so the page never
 // freezes while it runs. It runs while `layoutOn` is true.
 
-const FADED = "#e5e7eb";
 const FA2_SETTINGS = {
   barnesHutOptimize: true, // approximates far-away forces: fast enough for 10,000+ nodes
   barnesHutTheta: 0.6,
@@ -22,8 +20,8 @@ const FA2_SETTINGS = {
   strongGravityMode: false,
 };
 
-// view (Web3 mode only): { hiddenKinds: Set, hiddenNodes: Set, minValue: number, onContext(node, x, y) }.
-// In Web3 mode hovering a node also lights up its neighbours, and right-click opens a menu.
+// view: { hiddenKinds: Set, hiddenNodes: Set, minValue: number, onContext(node, x, y) }.
+// Hovering a node also lights up its neighbours, and right-click opens a menu.
 export default function SigmaGraph({ graph, selectedId, onSelect, onExpand, layoutOn, sigmaRef, view = null }) {
   const containerRef = useRef(null);
   const selectedRef = useRef(selectedId);
@@ -45,20 +43,10 @@ export default function SigmaGraph({ graph, selectedId, onSelect, onExpand, layo
       zIndex: true,
       minCameraRatio: 0.02,
       maxCameraRatio: 20,
-      ...(WEB3_DESIGN ? W3_SIGMA_SETTINGS : {}),
+      ...W3_SIGMA_SETTINGS,
       // Dim everything that is not the selected node or its neighbours.
-      nodeReducer: WEB3_DESIGN ? (node, data) => w3NodeReducer(graph, node, data, hoveredRef.current || selectedRef.current, viewRef.current) : (node, data) => {
-        const sel = selectedRef.current;
-        if (!sel || !graph.hasNode(sel)) return data;
-        if (node === sel) return { ...data, highlighted: true, zIndex: 2 };
-        if (graph.areNeighbors(node, sel)) return { ...data, zIndex: 1 };
-        return { ...data, color: FADED, label: "", zIndex: 0 };
-      },
-      edgeReducer: WEB3_DESIGN ? (edge, data) => w3EdgeReducer(graph, edge, data, hoveredRef.current || selectedRef.current, viewRef.current) : (edge, data) => {
-        const sel = selectedRef.current;
-        if (!sel || !graph.hasNode(sel)) return data;
-        return graph.hasExtremity(edge, sel) ? { ...data, size: Math.max(data.size ?? 1, 2), zIndex: 1 } : { ...data, hidden: true };
-      },
+      nodeReducer: (node, data) => w3NodeReducer(graph, node, data, hoveredRef.current || selectedRef.current, viewRef.current),
+      edgeReducer: (edge, data) => w3EdgeReducer(graph, edge, data, hoveredRef.current || selectedRef.current, viewRef.current),
     });
     sigmaRef.current = renderer;
 
@@ -70,20 +58,20 @@ export default function SigmaGraph({ graph, selectedId, onSelect, onExpand, layo
     });
     renderer.on("enterNode", ({ node }) => {
       containerRef.current.style.cursor = "pointer";
-      if (WEB3_DESIGN) { hoveredRef.current = node; renderer.refresh({ skipIndexation: true }); }
+      hoveredRef.current = node;
+      renderer.refresh({ skipIndexation: true });
     });
     renderer.on("leaveNode", () => {
       containerRef.current.style.cursor = "";
-      if (WEB3_DESIGN) { hoveredRef.current = ""; renderer.refresh({ skipIndexation: true }); }
+      hoveredRef.current = "";
+      renderer.refresh({ skipIndexation: true });
     });
-    if (WEB3_DESIGN) {
-      renderer.on("rightClickNode", (event) => {
-        event.preventSigmaDefault();
-        event.event.original.preventDefault();
-        const box = containerRef.current.getBoundingClientRect();
-        viewRef.current?.onContext?.(event.node, box.left + event.event.x, box.top + event.event.y);
-      });
-    }
+    renderer.on("rightClickNode", (event) => {
+      event.preventSigmaDefault();
+      event.event.original.preventDefault();
+      const box = containerRef.current.getBoundingClientRect();
+      viewRef.current?.onContext?.(event.node, box.left + event.event.x, box.top + event.event.y);
+    });
 
     return () => {
       renderer.kill();
@@ -91,7 +79,7 @@ export default function SigmaGraph({ graph, selectedId, onSelect, onExpand, layo
     };
   }, [graph, sigmaRef]);
 
-  // 2. Redraw when the selection (or, in Web3 mode, a filter) changes; the reducers read them from refs.
+  // 2. Redraw when the selection (or a filter) changes; the reducers read them from refs.
   useEffect(() => {
     selectedRef.current = selectedId;
     sigmaRef.current?.refresh({ skipIndexation: true });
@@ -114,7 +102,7 @@ export default function SigmaGraph({ graph, selectedId, onSelect, onExpand, layo
       onKeyDown={(event) => {
         if (event.key === "Escape") onSelect("");
       }}
-      onContextMenu={WEB3_DESIGN ? (event) => event.preventDefault() : undefined}
+      onContextMenu={(event) => event.preventDefault()}
     />
   );
 }

@@ -82,8 +82,7 @@ INACTIVE_ACCOUNT_DAYS=730    # optional, accounts unused this long are deleted (
 2. **Root Directory**: `frontend`. Framework is detected as Vite, and `frontend/vercel.json` sets the build.
 3. Under **Environment Variables**, add:
    - `VITE_API_BASE_URL` = `https://<railway-domain>`, with no trailing slash, for Production (and Preview if you want it).
-   - `VITE_LOGIN_DESIGN` = `web3` to show the animated Web3 design (login, Home, glass pages). Leave it out for the original design. Either way, `?classic` in the URL shows the original and `?web3` shows the new one.
-4. Deploy. Vite bakes `VITE_API_BASE_URL` and `VITE_LOGIN_DESIGN` into the build, so **redeploy after changing it**: Deployments → ⋯ → Redeploy.
+4. Deploy. Vite bakes `VITE_API_BASE_URL` into the build, so **redeploy after changing it**: Deployments → ⋯ → Redeploy.
 5. Copy the Vercel URL into Railway's `FRONTEND_ORIGIN` (Step 2.3). Railway redeploys on its own.
 
 Every push to the branch then redeploys both.

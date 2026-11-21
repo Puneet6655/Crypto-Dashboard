@@ -23,23 +23,13 @@ import LoginPage from "./pages/LoginPage.jsx";
 import LegalPage from "./legal/LegalPage.jsx";
 import CompleteProfile from "./legal/CompleteProfile.jsx";
 import { LegalFooter, StorageNotice } from "./legal/LegalBits.jsx";
-import { NEU_DESIGN, WEB3_LOOK } from "./config/w3Design.js";
-import W3Backdrop from "./w3/W3Backdrop.jsx";
-import { useEdgeReveal } from "./w3/useEdgeReveal.js";
-// Web3 shell styles. Every rule is scoped to html.w3, which is only set when Web3 mode is on.
-import "./w3/w3-shell.css";
+// Interactive layout styles (smart search, risk panel, graph tools, alert monitor).
 import "./w3/w3-pages.css";
-// Soft UI (neumorphism) look: every rule is scoped to html.neu. New Investigate tools use the shared tokens.
+// Soft UI (neumorphism), the dashboard's only design: every rule is scoped to html.neu.
 import "./neu/neu.css";
 import "./investigate/investigate.css";
 
-if (WEB3_LOOK) document.documentElement.classList.add("w3");
-if (NEU_DESIGN) document.documentElement.classList.add("neu");
-
-// Web3-style login page, loaded only when the Web3 design is on (config/w3Design.js), so the original page is
-// unchanged without it. On with VITE_LOGIN_DESIGN=web3 (Vercel) or ?web3; ?classic forces the original.
-const Web3LoginPage = lazy(() => import("./pages/Web3LoginPage.jsx"));
-const WEB3_LOGIN = WEB3_LOOK; // the Soft look restyles the original sign-in page instead
+document.documentElement.classList.add("neu");
 
 // Graph explorer pulls in WebGL drawing (Sigma) and a layout worker: load it only when opened.
 const GraphExplorerPage = lazy(() => import("./pages/GraphExplorerPage.jsx"));
@@ -85,7 +75,7 @@ function Gate() {
       </div>
     );
   }
-  if (!user) return WEB3_LOGIN ? <Suspense fallback={null}><Web3LoginPage /></Suspense> : <LoginPage />;
+  if (!user) return <LoginPage />;
   // Accounts made before the age, user-type and consent questions, or after the terms changed.
   if (user.needs?.length) return <CompleteProfile />;
   return <Shell />;
@@ -97,7 +87,6 @@ function Shell() {
   const investigation = useInvestigation();
   const [menuOpen, setMenuOpen] = useState(false);
   const live = useLiveAlerts({ onOpen: () => navigate("/alerts") });
-  const reveal = useEdgeReveal(WEB3_LOOK); // Web3 look: side menu appears when the mouse reaches the left edge
 
   const known = PAGES.find((p) => p.id === route.page);
   const allowed = route.page === "account" || route.page === "overview" || PUBLIC_PAGES.includes(route.page)
@@ -111,11 +100,8 @@ function Shell() {
   }
 
   return (
-    <div className={`shell ${WEB3_LOOK && reveal.pinned ? "w3-pinned" : ""}`}>
-      {WEB3_LOOK && <W3Backdrop mode={page === "overview" ? "full" : "calm"} pulse={live.pulse} />}
-      {WEB3_LOOK && <div className={`w3-edge ${reveal.shown ? "hidden" : ""}`} aria-hidden="true" />}
-      <Sidebar page={page} open={menuOpen} onClose={() => setMenuOpen(false)} unseenAlerts={page === "alerts" ? 0 : live.unseen}
-        reveal={WEB3_LOOK ? reveal : null} />
+    <div className="shell">
+      <Sidebar page={page} open={menuOpen} onClose={() => setMenuOpen(false)} unseenAlerts={page === "alerts" ? 0 : live.unseen} />
       <div className="main">
         <div className="mobile-bar">
           <button type="button" className="ghost-icon" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
@@ -131,7 +117,7 @@ function Shell() {
           )}
           {page === "investigate" && <InvestigatePage investigation={investigation} />}
           {page === "graph" && (
-            <Suspense fallback={<div className="card state">Loading the graph explorer...</div>}>
+            <Suspense fallback=<div className="card state">Loading the graph explorer...</div>>
               <GraphExplorerPage route={route} />
             </Suspense>
           )}

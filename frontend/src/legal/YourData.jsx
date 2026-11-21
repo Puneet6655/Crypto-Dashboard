@@ -14,7 +14,7 @@ const LABELS = {
 };
 
 // Account page: your details, download all your data, and delete your account. Uses shared classes only,
-// so it works in the classic and Web3 designs.
+// so the Soft design styles it.
 export default function YourData() {
   const { user, config, deleteAccount } = useAuth();
   const toast = useToast();

@@ -7,7 +7,6 @@ import { navigate } from "../hooks/useHashRoute.js";
 import PageHeader, { formatDate, timeAgo } from "../components/PageHeader.jsx";
 import Icon from "../components/Icon.jsx";
 import { useToast } from "../components/Toasts.jsx";
-import { WEB3_DESIGN } from "../config/w3Design.js";
 import ChainBadge from "../w3/ChainBadge.jsx";
 import { W3CaseChains, W3CaseGraphButton, W3ChainSelect, W3ItemGraphButton, goWithTransition } from "../w3/W3CaseBits.jsx";
 
@@ -89,8 +88,8 @@ function CaseList() {
           return (
             <a key={c.id} href={`#/cases/${c.id}`} className={`card case-card ${c.status}`}
               // Web3 mode: the card morphs into the case's header (view transition) instead of a plain page switch.
-              style={WEB3_DESIGN ? { viewTransitionName: `w3-case-${c.id}` } : undefined}
-              onClick={WEB3_DESIGN ? (e) => { e.preventDefault(); goWithTransition(`/cases/${c.id}`, `[data-case-vt="${c.id}"]`); } : undefined}>
+              style={{ viewTransitionName: `w3-case-${c.id}` }}
+              onClick={(e) => { e.preventDefault(); goWithTransition(`/cases/${c.id}`, `[data-case-vt="${c.id}"]`); }}>
               <div className="case-card-head">
                 <span className={`priority priority-${c.priority}`}>{c.priority}</span>
                 {c.status === "closed" && <span className="pill pill-muted">Closed</span>}
@@ -104,7 +103,7 @@ function CaseList() {
                 {c.item_count - addresses - txs > 0 && <span title="Other items"><Icon name="tag" size={14} /> {c.item_count - addresses - txs}</span>}
                 <span className="muted grow-right">updated {timeAgo(c.updated_at)}</span>
               </div>
-              {WEB3_DESIGN && <W3CaseChains items={c.items} compact />}
+              <W3CaseChains items={c.items} compact />
             </a>
           );
         })}
@@ -261,9 +260,9 @@ function CaseDetail({ caseId, onInvestigate }) {
   return (
     <>
       <a href="#/cases" className="back-link"
-        onClick={WEB3_DESIGN ? (e) => { e.preventDefault(); goWithTransition("/cases", `.case-card`); } : undefined}>← All cases</a>
+        onClick={(e) => { e.preventDefault(); goWithTransition("/cases", `.case-card`); }}>← All cases</a>
       <header className="case-header card" data-case-vt={data.id}
-        style={WEB3_DESIGN ? { viewTransitionName: `w3-case-${data.id}` } : undefined}>
+        style={{ viewTransitionName: `w3-case-${data.id}` }}>
         {editingText ? (
           <CaseTextForm data={data} onCancel={() => setEditingText(false)}
             onSave={async (changes) => { await update(changes, "Saved"); setEditingText(false); }} />
@@ -275,12 +274,12 @@ function CaseDetail({ caseId, onInvestigate }) {
               <span className="small muted">#{data.id} · opened by {data.created_by_name ?? "someone"} {timeAgo(data.created_at)}</span>
             </div>
             <h1>{data.title}</h1>
-            {WEB3_DESIGN && <W3CaseChains items={data.items} />}
+            <W3CaseChains items={data.items} />
             {data.description ? <p className="pre-wrap">{data.description}</p> : <p className="muted small">No description.</p>}
           </>
         )}
         <div className="case-actions">
-          {WEB3_DESIGN && !editingText && <W3CaseGraphButton items={data.items} />}
+          {!editingText && <W3CaseGraphButton items={data.items} />}
           {canEdit && !editingText && (
             <>
               <button type="button" className="secondary" onClick={() => setEditingText(true)}><Icon name="edit" size={15} /> Edit</button>
@@ -370,7 +369,7 @@ function ItemRow({ item, canEdit, onInvestigate, onRemove, onSaveNote }) {
     <tr>
       <td>
         <span className="type-chip"><Icon name={type.icon} size={14} /> {type.short}</span>
-        {WEB3_DESIGN && <div className="w3-item-chain"><ChainBadge chain={item.network} /></div>}
+        <div className="w3-item-chain"><ChainBadge chain={item.network} /></div>
       </td>
       <td>
         <span className="mono small" title={item.value} {...caseItemAttrs(item)}>{shortValue(item.value, 14)}</span>
@@ -390,7 +389,7 @@ function ItemRow({ item, canEdit, onInvestigate, onRemove, onSaveNote }) {
       </td>
       <td>
         <div className="row-actions">
-          {WEB3_DESIGN && <W3ItemGraphButton item={item} />}
+          <W3ItemGraphButton item={item} />
           {canLookUp && (
             <button type="button" className="ghost-icon" title="Investigate live" aria-label="Investigate live"
               onClick={() => onInvestigate(lookUpType, item.value)}>
@@ -493,7 +492,7 @@ function AddItemForm({ caseId, onAdded }) {
         <option value="auto">Auto ({ITEM_TYPES[guessType(value)].short.toLowerCase()})</option>
         {Object.entries(ITEM_TYPES).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
       </select>
-      {WEB3_DESIGN && <W3ChainSelect value={chain} onChange={setChain} guess={guessedNetwork} />}
+      <W3ChainSelect value={chain} onChange={setChain} guess={guessedNetwork} />
       <input className="grow mono" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Paste an address or transaction ID" aria-label="Address or transaction ID" maxLength={300} />
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" aria-label="Note" maxLength={2000} />
       <button type="submit" className="primary compact" disabled={busy || !value.trim()}><Icon name="plus" size={14} /> Add</button>

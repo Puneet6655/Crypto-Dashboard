@@ -1,5 +1,5 @@
-/* Legal pages, sign-up consent, storage notice and footer. Uses the theme variables, so it follows both the
-   classic design (styles/app.css) and the Web3 design (html.w3 in w3/w3-shell.css). */
+/* Legal pages, sign-up consent, storage notice and footer. Uses the theme variables, so it follows the
+   Soft design (neu/neu.css). */
 
 .legal-card { max-width: 860px; }
 .legal-text h2 { margin: 0 0 4px; }

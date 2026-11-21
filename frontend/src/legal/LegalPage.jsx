@@ -17,7 +17,7 @@ export function useLegalInfo() {
 }
 
 // #/privacy and #/terms. Works signed in (inside the dashboard) and signed out (`standalone`, from the sign-in page).
-// Uses only shared classes, so it looks right in both the classic and the Web3 design.
+// Uses only shared classes, so the Soft design styles it.
 export default function LegalPage({ page, standalone = false }) {
   const info = useLegalInfo();
   const showing = page === "terms" ? "terms" : "privacy";

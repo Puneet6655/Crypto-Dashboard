@@ -4,7 +4,6 @@ import { LAYOUTS, buildStylesheet, nodeTypeInfo, relationInfo } from "../config/
 import { useCases } from "../cases/CasesContext.jsx";
 import { itemFromNode } from "../cases/caseItems.js";
 import { formatBtc } from "../utils/bitcoinAmount.js";
-import { WEB3_DESIGN } from "../config/w3Design.js";
 import { w3Entrance, w3Hide, w3StartLayout, w3Stylesheet } from "../w3/graphTheme.js";
 
 // Turn our API's { nodes, edges } into the list Cytoscape expects:
@@ -137,10 +136,10 @@ export default function GraphCanvas({
     const cy = cytoscape({
       container: containerRef.current,
       elements,
-      style: WEB3_DESIGN ? w3Stylesheet(buildStylesheet()) : buildStylesheet(),
+      style: w3Stylesheet(buildStylesheet()),
       // placeholder; effect 2 runs the real layout. After an expansion, start from the old positions.
       layout: grown ? { name: "preset", positions: (node) => placed.get(node.id()), fit: false }
-        : WEB3_DESIGN ? w3StartLayout : { name: "grid" },
+        : w3StartLayout,
       minZoom: 0.05, // low enough that "fit" can always show a 50-node graph
       maxZoom: 4,
       boxSelectionEnabled: false,
@@ -151,7 +150,7 @@ export default function GraphCanvas({
       cy.viewport({ zoom: viewRef.current.zoom, pan: viewRef.current.pan });
     } else {
       firstLayout.current = true;
-      if (WEB3_DESIGN) w3Hide(cy);
+      w3Hide(cy);
     }
 
     // Click (or tap on a touch screen) a node or a link to select it.
@@ -212,8 +211,8 @@ export default function GraphCanvas({
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    // Web3 mode: the first layout of a new graph plays the "fly out from the middle" entrance.
-    if (WEB3_DESIGN && firstLayout.current) {
+    // The first layout of a new graph plays the "fly out from the middle" entrance.
+    if (firstLayout.current) {
       firstLayout.current = false;
       const layout = w3Entrance(cy, LAYOUTS[layoutName].options);
       layoutRef.current = layout;

@@ -1,6 +1,6 @@
 import "./legal.css";
 
-// The extra sign-up questions, shared by the classic and Web3 sign-in pages and the "complete your account" page:
+// The extra sign-up questions, shared by the sign-in page and the "complete your account" page:
 // date of birth (checked, never stored), what kind of user you are, organisation (some types), and consent.
 // `value` is { dob, userType, organisation, accept }; `onChange` gets the whole new value.
 // `askAge` false hides the date of birth (already confirmed); `askType` false hides type and organisation.

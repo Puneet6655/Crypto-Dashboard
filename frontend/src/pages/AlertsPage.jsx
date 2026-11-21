@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import PageHeader, { formatDate, timeAgo } from "../components/PageHeader.jsx";
+import { formatDate, timeAgo } from "../components/PageHeader.jsx";
 import Icon from "../components/Icon.jsx";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { useToast } from "../components/Toasts.jsx";
-import { WEB3_DESIGN } from "../config/w3Design.js";
 import W3AlertsView from "../w3/W3AlertsView.jsx";
 
 const short = (a) => (a ? `${a.slice(0, 8)}…${a.slice(-6)}` : "contract creation");
@@ -64,89 +63,16 @@ export function addressProblem(chain, raw) {
 
 // Live alerts: new transactions by watched addresses on Ethereum, Base, Solana and Bitcoin.
 export default function AlertsPage({ live, onInvestigate }) {
-  const { alerts, status, statuses, markSeen, reload } = live;
+  const { alerts, status, statuses, markSeen } = live;
   useEffect(() => markSeen(), [alerts.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Web3 mode: monitored wallets on the left, click one to see its transactions (w3/W3AlertsView.jsx).
-  if (WEB3_DESIGN) {
-    return (
-      <W3AlertsView live={live} onInvestigate={onInvestigate} ManageWatchlist={Watchlist}
-        statusCards={<>
-          <WatcherStatus status={status} />
-          {statuses && ["base", "solana", "bitcoin"].map((chain) => <PollerStatus key={chain} chain={chain} status={statuses[chain]} />)}
-        </>} />
-    );
-  }
-
+  // Monitored wallets on the left, click one to see its transactions (w3/W3AlertsView.jsx).
   return (
-    <>
-      <PageHeader icon="bell" title="Live alerts"
-        subtitle="New transactions by watched addresses (your watchlist, open cases, the OFAC list) on Ethereum, Base, Solana and Bitcoin.">
-        <button type="button" className="secondary" onClick={reload}>
-          <Icon name="refresh" size={16} /> Check now
-        </button>
-      </PageHeader>
-
-      <Watchlist onChange={reload} />
-
-      <WatcherStatus status={status} />
-      {statuses && ["base", "solana", "bitcoin"].map((chain) => <PollerStatus key={chain} chain={chain} status={statuses[chain]} />)}
-
-      <section className="card">
-        <div className="section-head"><h2>Alerts ({alerts.length})</h2></div>
-        {!alerts.length ? (
-          <p className="muted small">
-            No alerts yet. An alert appears here and as a pop-up when a watched address sends or receives money.
-            Add addresses to the watchlist above, or to an open case (Ethereum).
-          </p>
-        ) : (
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr><th>When</th><th>Chain</th><th>Watched address</th><th>Why watched</th><th>Direction</th><th className="num">Amount</th><th>Transaction</th><th aria-label="Actions" /></tr>
-              </thead>
-              <tbody>
-                {alerts.map((a) => {
-                  const watched = a.watched[0];
-                  const chain = CHAINS[a.chain ?? "ethereum"] ?? CHAINS.ethereum;
-                  const amount = a.amount ?? a.value_eth;
-                  return (
-                    <tr key={a.id} className={a.sanctioned ? "alert-row-sanctioned" : ""}>
-                      <td title={formatDate(a.at, true)}>{timeAgo(a.at)}</td>
-                      <td className="small">{chain.label}{a.kind === "x402" && <span className="pill pill-warn">x402</span>}</td>
-                      <td className="mono small" title={watched?.address}>{short(watched?.address)}</td>
-                      <td className="small">
-                        {watched?.reasons.map((r) => (
-                          <span key={r} className={`pill ${r.includes("OFAC") ? "pill-down" : "pill-muted"}`}>{r}</span>
-                        ))}
-                        {a.removed && <span className="pill pill-warn">dropped by re-org</span>}
-                        {a.failed && <span className="pill pill-warn">failed</span>}
-                      </td>
-                      <td className="small">
-                        {a.direction
-                          ? <>{a.direction === "out" ? "sent to" : "received from"} <span className="mono">{a.counterparty ? short(a.counterparty) : "several"}</span></>
-                          : <span className="muted">took part</span>}
-                      </td>
-                      <td className="num">{amount != null ? `${amount} ${a.unit ?? "ETH"}` : "—"}</td>
-                      <td className="small">
-                        <a href={chain.explorer(a.tx_hash)} target="_blank" rel="noreferrer" className="mono">
-                          {short(a.tx_hash)} <Icon name="external" size={12} />
-                        </a>
-                      </td>
-                      <td>
-                        <button type="button" className="secondary small-button"
-                          onClick={() => (a.kind === "x402" ? onInvestigate("base_txid", a.tx_hash, "x402", "x402_rules") : onInvestigate(chain.investigate, a.tx_hash))}>Investigate</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="small muted">Alerts are kept in the API's memory (the newest 200 per chain) and clear when it restarts.</p>
-      </section>
-    </>
+    <W3AlertsView live={live} onInvestigate={onInvestigate} ManageWatchlist={Watchlist}
+      statusCards={<>
+        <WatcherStatus status={status} />
+        {statuses && ["base", "solana", "bitcoin"].map((chain) => <PollerStatus key={chain} chain={chain} status={statuses[chain]} />)}
+      </>} />
   );
 }
 
