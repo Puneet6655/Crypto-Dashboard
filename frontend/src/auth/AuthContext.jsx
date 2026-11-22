@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { SESSION_ENDED_EVENT, apiFetch, getToken, setToken } from "../api/client.js";
 
 // Who is signed in, and what they may do. Roles, least to most access:
-// viewer (every new sign-up) < analyst (builds cases) < admin (sources, BigQuery, users).
+// viewer (every new sign-up) < analyst (builds cases) < admin (sources, models, users).
 export const ROLE_RANK = { viewer: 0, analyst: 1, admin: 2 };
 export const ROLE_LABELS = { viewer: "Viewer", analyst: "Analyst", admin: "Admin" };
 

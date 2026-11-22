@@ -95,6 +95,10 @@ export default function SourcesPage() {
       <p className="notice info small">
         Ethereum data is{" "}
         <a href="https://etherscan.io" target="_blank" rel="noopener noreferrer">powered by Etherscan.io APIs</a>.
+        Exchange labels come from Dune's{" "}
+        <a href="https://github.com/duneanalytics/spellbook" target="_blank" rel="noopener noreferrer">Spellbook</a>{" "}
+        (Business Source License 1.1), and x402 facilitator addresses from{" "}
+        <a href="https://github.com/Merit-Systems/x402scan" target="_blank" rel="noopener noreferrer">x402scan</a> (MIT, Merit Systems).
         Each source below is used under its own licence or terms; see also the <a href="#/terms">terms of use</a>.
       </p>
       {!isAdmin && (
@@ -181,6 +185,15 @@ const LIST_IDS = {
   "Tranco top sites list": ["tranco_top"],
 };
 
+// Sources whose state comes from /api/status/services (settings only, no calls to the service).
+const SERVICE_IDS = {
+  "Coinbase CDP SQL API": ["cdp"],
+  "Helius": ["helius"],
+  "Dune cex.addresses": ["dune"],
+  "x402analysis": ["x402-snapshot"],
+  "x402scan facilitator list": ["x402-snapshot"],
+};
+
 function useSourceStatus() {
   const bitcoin = useApi("/api/bitcoin/providers");
   const ethereum = useApi("/api/ethereum/providers");
@@ -189,7 +202,7 @@ function useSourceStatus() {
   const alerts = useApi("/api/alerts?limit=1");
   const lists = useApi("/api/indicators/status");
   const db = useApi("/api/status/database");
-  const bigquery = useApi("/api/bigquery/status");
+  const services = useApi("/api/status/services");
 
   // One lookup source on one chain: Working, Cooling down, or Not set up.
   const lookup = (query, provider, chain) => {
@@ -232,9 +245,13 @@ function useSourceStatus() {
     } else if (LIST_IDS[name]) items = listState(LIST_IDS[name]);
     else if (name === "Neon serverless Postgres" && db.data) {
       items = [db.data.connected ? { tone: "up", text: `Connected · ${db.data.latency_ms} ms` } : { tone: "down", text: "Not connected" }];
-    } else if (name.startsWith("Google BigQuery") && bigquery.data) {
-      items = [{ tone: bigquery.data.key_found && bigquery.data.library_installed ? "up" : "warn",
-        text: `Refresh in development · key ${bigquery.data.key_found ? "found" : "missing"}` }];
+    } else if (SERVICE_IDS[name] && services.data) {
+      items = SERVICE_IDS[name].map((id) => {
+        const sv = services.data.services.find((x) => x.id === id);
+        if (!sv) return null;
+        const word = sv.state === "off" ? "Not set up" : sv.state === "up" ? "Set up" : sv.state === "warn" ? "Needs attention" : "Not working";
+        return { tone: sv.state === "off" ? "warn" : sv.state, text: SERVICE_IDS[name].length > 1 ? `${sv.name}: ${word}` : word };
+      });
     }
     return items.filter(Boolean);
   };

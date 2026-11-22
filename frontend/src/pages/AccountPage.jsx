@@ -9,7 +9,7 @@ import YourData from "../legal/YourData.jsx";
 const ROLE_HELP = {
   viewer: "You can use every page of the dashboard. Ask an admin if you need to build cases.",
   analyst: "You can also create cases and add addresses and transactions to them.",
-  admin: "You can also edit the sources list, use BigQuery tools, delete cases and manage users.",
+  admin: "You can also edit the sources list, see the Models page, delete cases and manage users.",
 };
 
 export default function AccountPage() {

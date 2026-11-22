@@ -11,9 +11,8 @@ export const PAGES = [
   { id: "rule-packs", label: "Rule packs", icon: "shield", hint: "Red-flag indicators from FATF, FinCEN, AUSTRAC and OFAC" },
   { id: "x402", label: "x402 payments", icon: "payment", hint: "AI-agent USDC payments: risky servers and flagged payments" },
   { id: "models", label: "Models", icon: "shield", hint: "Random Forest vs XGBoost, offline benchmark and SHAP", role: "admin" },
-  { id: "status", label: "Status", icon: "status", hint: "Live lookups, database, sanction lists" },
+  { id: "status", label: "Status", icon: "status", hint: "Live lookups, data services, database, sanction lists" },
   { id: "sources", label: "Sources", icon: "sources", hint: "Data and software we rely on" },
-  { id: "bigquery", label: "BigQuery refresh", icon: "bigquery", hint: "Load new transaction data", badge: "Dev", role: "admin" },
   { id: "users", label: "Users", icon: "users", hint: "Accounts, roles and audit log", role: "admin" },
 ];
 

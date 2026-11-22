@@ -19,14 +19,14 @@ export default function StatusPage() {
   const alerts = useApi("/api/alerts?limit=1");
   const history = useApi("/api/status/provider-history?limit=48");
   const lists = useApi("/api/indicators/status");
-  const bigquery = useApi("/api/bigquery/status");
+  const services = useApi("/api/status/services");
   const usage = useApi("/api/status/usage");
   const [auto, setAuto] = useState(false);
 
   async function checkAll() {
     // Saves one provider health check, which the history strip below shows.
     await apiFetch("/api/bitcoin/health").catch(() => null);
-    await Promise.all([api.reload(), db.reload(), providers.reload(), ethProviders.reload(), baseProviders.reload(), solProviders.reload(), alerts.reload(), lists.reload(), bigquery.reload()]);
+    await Promise.all([api.reload(), db.reload(), providers.reload(), ethProviders.reload(), baseProviders.reload(), solProviders.reload(), alerts.reload(), lists.reload(), services.reload()]);
     usage.reload(); // after the checks above, so their calls are counted
     history.reload();
   }
@@ -42,7 +42,7 @@ export default function StatusPage() {
 
   return (
     <>
-      <PageHeader icon="status" title="Status" subtitle="Live lookup services, API usage, the database and the sanction lists.">
+      <PageHeader icon="status" title="Status" subtitle="Live lookup services, x402 and label services, API usage, the database and the sanction lists.">
         <label className="switch">
           <input type="checkbox" checked={auto} onChange={(event) => setAuto(event.target.checked)} />
           <span>Auto-check every {AUTO_REFRESH_SECONDS} s</span>
@@ -117,9 +117,26 @@ export default function StatusPage() {
               <p className="small muted">
                 Bitcoin: mempool.space answers first; blockstream.info takes over when it is rate limited or down.
                 Ethereum: etherscan.io (3 calls per second, 100,000 a day), then blockscout.com (when BLOCKSCOUT_API_KEY is set) and alchemy.com as backups.
+                x402 payments: Coinbase CDP on Base and Helius on Solana, shown in the card below.
                 Base and Solana: alchemy.com only. Ethereum live alerts use Alchemy's WebSocket; Base and Solana alerts check each watched address in turn. Everything on alchemy.com
                 needs ALCHEMY_API_KEY and ALCHEMY_ENABLED=true.
                 {providers.data.cache_entries > 0 && ` ${providers.data.cache_entries} recent answers cached.`}
+              </p>
+            </>
+          )}
+        </StatusCard>
+
+        <StatusCard icon="payment" title="x402, labels and extra API keys" wide state={servicesState(services)}>
+          {services.error && <p className="error-text small">{services.error}</p>}
+          {!services.data && !services.error && <p className="small muted">Checking...</p>}
+          {services.data && (
+            <>
+              <div className="provider-list">
+                {services.data.services.map((s) => <ServiceRow key={s.id} service={s} />)}
+              </div>
+              <p className="small muted">
+                Read from the API's settings and memory only, so this card never spends any quota. Keys are never shown.
+                Grey means not set up: the dashboard works without it, using the other sources.
               </p>
             </>
           )}
@@ -163,22 +180,12 @@ export default function StatusPage() {
           )}
         </StatusCard>
 
-        <StatusCard icon="bigquery" title="BigQuery refresh" state="dev">
-          {bigquery.data ? (
-            <dl className="kv">
-              <dt>Stage</dt><dd>Under development</dd>
-              <dt>Key file</dt><dd>{bigquery.data.key_found ? "found" : "missing"}</dd>
-              <dt>Library</dt><dd>{bigquery.data.library_installed ? "installed" : "not installed"}</dd>
-            </dl>
-          ) : <p className="small muted">{bigquery.error || "..."}</p>}
-          <a className="small" href="#/bigquery">Open BigQuery refresh</a>
-        </StatusCard>
       </div>
     </>
   );
 }
 
-const STATE_LABEL = { up: "Working", warn: "Needs attention", down: "Not working", checking: "Checking", dev: "In development" };
+const STATE_LABEL = { up: "Working", warn: "Needs attention", down: "Not working", checking: "Checking" };
 
 function StatusCard({ icon, title, state, wide, children }) {
   return (
@@ -262,6 +269,34 @@ function ProviderRow({ source, heightLabel = "Block" }) {
       </div>
     </div>
   );
+}
+
+// One newer service (x402, labels, extra keys): set up or not, and what it is doing.
+function ServiceRow({ service }) {
+  const dot = service.state === "off" ? "checking" : service.state;
+  return (
+    <div className="provider-row">
+      <span className={`dot dot-${dot}`} aria-hidden="true" />
+      <div className="grow">
+        <div>
+          {service.docs
+            ? <a href={service.docs} target="_blank" rel="noreferrer"><strong>{service.name}</strong></a>
+            : <strong>{service.name}</strong>}{" "}
+          {service.tag && <span className="tag">{service.tag}</span>}
+        </div>
+        <div className="small">{service.used_for}</div>
+        <div className="small muted">{service.detail}</div>
+      </div>
+    </div>
+  );
+}
+
+// Down if anything that is set up is broken, warn on a warning; "off" (not set up) is fine.
+function servicesState(query) {
+  if (query.error) return "down";
+  if (!query.data) return "checking";
+  const states = query.data.services.map((s) => s.state);
+  return states.includes("down") ? "down" : states.includes("warn") ? "warn" : "up";
 }
 
 // The last checks as a row of bars: green = reachable, red = not.

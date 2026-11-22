@@ -149,24 +149,37 @@ DEFAULT_SOURCES: list[dict] = [
         "name": "x402scan facilitator list",
         "category": "Sanctions and threat intelligence",
         "url": "https://github.com/Merit-Systems/x402scan",
-        "used_for": "Addresses of x402 payment facilitators, to recognise x402 payments. Not used for model training.",
-        "licence": "MIT",
+        "used_for": "Addresses of x402 payment facilitators (Base and Solana), to recognise x402 payments. Copied into "
+                    "the x402 snapshot with credit. Not used for model training.",
+        "licence": "MIT (Copyright Merit Systems). Its paid x402scan API is not used.",
         "citation": "Merit Systems, x402scan. https://github.com/Merit-Systems/x402scan",
     },
     {
         "name": "Coinbase CDP SQL API",
         "category": "Live blockchain data",
         "url": "https://docs.cdp.coinbase.com/data/sql-api/welcome",
-        "used_for": "Optional: every x402 payment on Base. Used only when CDP_API_KEY_ID and CDP_API_KEY_SECRET are "
-                    "set. Not used for model training.",
+        "used_for": "x402 payments on Base: the x402 monitor (every payment once a minute, when on), Base address "
+                    "lookups on the x402 page, and the research script training/x402_records.py for rule-test "
+                    "records. Used only when CDP_API_KEY_ID and CDP_API_KEY_SECRET are set. Not used for model training.",
         "licence": "Coinbase Developer Platform terms of service apply (free tier with usage limits).",
         "citation": "Coinbase Developer Platform, CDP SQL API.",
+    },
+    {
+        "name": "Helius",
+        "category": "Live blockchain data",
+        "url": "https://www.helius.dev/docs/rpc/gettransactionsforaddress",
+        "used_for": "Real x402 payments on Solana (USDC transfers whose fee payer is a known facilitator), pulled by "
+                    "the research script training/x402_records_solana.py to test and tune the x402 rules. Needs "
+                    "HELIUS_API_KEY; the live site does not call it. Not used for model training; records stay local.",
+        "licence": "Helius Terms of Service apply (free plan: 1 million credits a month, 10 requests per second).",
+        "citation": "Helius Labs, Helius Solana RPC and getTransactionsForAddress API (helius.dev).",
     },
     {
         "name": "Google BigQuery public dataset crypto_bitcoin",
         "category": "Research datasets",
         "url": "https://console.cloud.google.com/marketplace/product/bitcoin/crypto-bitcoin",
-        "used_for": "Historical blocks and transactions for the training dataset (wallet-window and multi-hop features).",
+        "used_for": "Historical blocks and transactions for the offline training dataset (wallet-window and multi-hop "
+                    "features), loaded by the training scripts.",
         "licence": "Google Cloud Public Datasets, provided as is under the Google Cloud terms; the underlying Bitcoin "
                    "blockchain data is public. Queries billed by BigQuery pricing (1 TB a month free).",
         "citation": "Google Cloud, bigquery-public-data.crypto_bitcoin (blockchain-etl).",
@@ -298,11 +311,11 @@ ADDED_LATER = ("Etherscan API V2", "CryptoScamDB", "MetaMask eth-phishing-detect
                "Alchemy API", "Elliptic2 dataset", "Dune cex.addresses", "Blockscout PRO API",
                "Vercel and Railway hosting", "Google Fonts (Inter, JetBrains Mono)", "Sigma.js and Graphology",
                "scikit-learn, XGBoost, SHAP and NetworkX", "x402analysis", "x402scan facilitator list",
-               "Coinbase CDP SQL API")
+               "Coinbase CDP SQL API", "Helius")
 
 # Bump this when the licence or usage text of built-in sources changes. Once per revision, rows with a built-in
 # name that no admin has edited (updated_by is empty) are refreshed from DEFAULT_SOURCES; edited rows are left alone.
-SOURCES_REVISION = "2026-11-14"
+SOURCES_REVISION = "2026-11-22"
 
 
 def _add_later_defaults(conn) -> None:

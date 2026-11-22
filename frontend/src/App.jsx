@@ -16,7 +16,6 @@ import StatusPage from "./pages/StatusPage.jsx";
 import ModelsPage from "./pages/ModelsPage.jsx";
 import SourcesPage from "./pages/SourcesPage.jsx";
 import RulePacksPage from "./pages/RulePacksPage.jsx";
-import BigQueryPage from "./pages/BigQueryPage.jsx";
 import UsersPage from "./pages/UsersPage.jsx";
 import AccountPage from "./pages/AccountPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
@@ -128,7 +127,6 @@ function Shell() {
           {page === "status" && <StatusPage />}
           {page === "sources" && <SourcesPage />}
           {page === "rule-packs" && <RulePacksPage />}
-          {page === "bigquery" && <BigQueryPage />}
           {page === "users" && <UsersPage />}
           {page === "account" && <AccountPage />}
           {PUBLIC_PAGES.includes(page) && <LegalPage page={page} />}
