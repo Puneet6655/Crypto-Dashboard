@@ -42,14 +42,14 @@ After retraining, commit the updated files. If a new model file name appears in 
 
 ## Step 1: push the branch
 
-The deploy files and slim models are on `dashboard-update-2026-10-30`. Railway and Vercel build from GitHub, so push before deploying.
+Railway and Vercel build from GitHub `main` (the old `dashboard-update-2026-10-30` branch was merged into it on 9 Nov), so push before deploying.
 
 ## Step 2: backend on Railway
 
 1. Sign in at railway.com with GitHub and choose **New Project → Deploy from GitHub repo → Crypto-Dashboard**.
 2. In the service's **Settings**:
    - **Root Directory**: `backend`. Railway finds the Dockerfile.
-   - **Branch**: the branch you deploy, e.g. `dashboard-update-2026-10-30`.
+   - **Branch**: `main`.
    - **Region**: Southeast Asia (Singapore), closest to the Neon database in Sydney.
    - **Networking → Generate Domain**. This gives a URL like `https://crypto-dashboard-production.up.railway.app`.
 3. In **Variables**, use **Raw Editor** and paste the values from your `backend/.env`, plus the new ones:
@@ -103,6 +103,12 @@ npx vercel env add VITE_API_BASE_URL production --cwd frontend
 - Sign in on the Vercel URL. A CORS error in the browser console means `FRONTEND_ORIGIN` does not match the Vercel URL exactly.
 - The Status page shows the database connected, and the Models page lists the seven models.
 - Live alerts: the Alerts page shows the watcher connected.
+
+## Optional services on the server
+
+- **x402 monitor**: with `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` set it queries every x402 payment on Base each minute (about 1,440 CDP queries a day). Set `X402_MONITOR_ENABLED=false` to stop it.
+- **AI analyst**: it runs on the laptop for the demo (Ollama). Railway has no model server, so set `ANALYST_ENABLED=false` there until one is set up; the tab then says the analyst is turned off. The Claude CLI provider does not work on Railway (it needs a signed-in CLI).
+- **Rule packs** uploaded on the Rule packs page are saved on the container's disk and lost on redeploy. Commit packs to `backend/rule_packs/` instead, or mount a volume and set `RULE_PACKS_DIR`.
 
 ## Keeping keys safe
 

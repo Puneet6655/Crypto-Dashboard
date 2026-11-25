@@ -2,10 +2,12 @@
 
 Blockchain Intelligence Dashboard (student project).
 
-- `frontend/`: React + Vite dashboard (Investigate, Cases, Live alerts, Models, Status, Sources pages).
+- `frontend/`: React + Vite dashboard (Overview, Investigate, Cases, Live alerts, Rule packs, x402 payments,
+  Models, Status, Sources, Users pages).
 - `backend/`: Python FastAPI app: live Bitcoin, Ethereum, Base and Solana lookups, threat-list checks,
-  saved cases, and offline-benchmark models with SHAP explanations. `backend/training/` builds the
-  training data and models.
+  a graph explorer, live model scores with SHAP explanations, authority red-flag rule packs, x402 payment
+  checks, a local AI analyst, saved cases and evidence export. `backend/training/` builds the training
+  data and models.
 
 **New to the project? Read [docs/README.md](docs/README.md)** (setup, architecture, data sources and
 licences, ML pipeline, model dossiers, milestone status and known gaps).
@@ -56,7 +58,7 @@ Blockchair was left out: it blocked keyless requests from this PC (HTTP 430).
 
 ## Ethereum and Base lookups (Etherscan, Alchemy)
 
-With `ETHERSCAN_API_KEY` set in `backend/.env`, Crypto Investigation also accepts Ethereum addresses and transaction hashes. Alchemy support (Ethereum backup and Base) is built but off until `ALCHEMY_ENABLED=true` is set next to `ALCHEMY_API_KEY`. When on, Ethereum tries Etherscan first and Alchemy second, with the same cooldowns as Bitcoin (`GET /api/ethereum/providers`). Base uses Alchemy only, because Etherscan's free plan does not cover it (`GET /api/base/providers`); Base must be enabled for the app in Alchemy's dashboard. Alchemy's free plan allows 30 million compute units a month and 300 a second; its transfer call costs 120, so the backend spaces calls by cost. Alchemy needs no attribution. Its address history comes from two pairs of transfer calls (sent and received, up to 1,000 each): one pair for ETH (normal and internal transfers) and one for tokens (ERC-20 and NFTs), so token spam cannot push older ETH transactions out of the 1,000-record page. A full address lookup costs 480 compute units. Those lists carry no fees or success flags, which the investigation says when it happens. An address investigation asks for as much as one Etherscan call returns (1,000 records, checked with a free key) of each kind: normal transactions, ERC-20 transfers, internal transfers, and ERC-721 and ERC-1155 NFT transfers. Findings (ETH in and out, fees, counterparties, top tokens, failed transactions) and the sanctions check cover everything fetched. The graph shows up to `MAX_GRAPH_NODES` nodes, sanctioned counterparties first. A transaction investigation shows its status, fee, internal transfers and the token transfers in its receipt. Every address is checked against the OFAC list of sanctioned Ethereum-format addresses. Bitcoin APIs have fixed page sizes (25 transactions per call; 50 on mempool.space's first page), so there is nothing to raise there. The free key allows 3 calls per second and 100,000 a day: the backend spaces its calls to stay under that and caches answers. If the daily limit is reached it stops calling Etherscan for an hour. The key is never saved or shown: evidence URLs and log lines leave it out. API: `GET /api/ethereum/address/{address}`, `/address/{address}/transactions`, `/tx/{hash}`, `/providers`. OFAC lists Ethereum-format addresses without naming a chain, so a match on Base is flagged with that caveat.
+With `ETHERSCAN_API_KEY` set in `backend/.env`, Crypto Investigation also accepts Ethereum addresses and transaction hashes. Alchemy support (Ethereum backup and Base) is built but off until `ALCHEMY_ENABLED=true` is set next to `ALCHEMY_API_KEY`. Ethereum tries Etherscan first, then Blockscout (with `BLOCKSCOUT_API_KEY`, free key, no Base on its free plan), then Alchemy when it is on, with the same cooldowns as Bitcoin (`GET /api/ethereum/providers`). Base uses Alchemy only, because Etherscan's free plan does not cover it (`GET /api/base/providers`); Base must be enabled for the app in Alchemy's dashboard. Alchemy's free plan allows 30 million compute units a month and 300 a second; its transfer call costs 120, so the backend spaces calls by cost. Alchemy needs no attribution. Its address history comes from two pairs of transfer calls (sent and received, up to 1,000 each): one pair for ETH (normal and internal transfers) and one for tokens (ERC-20 and NFTs), so token spam cannot push older ETH transactions out of the 1,000-record page. A full address lookup costs 480 compute units. Those lists carry no fees or success flags, which the investigation says when it happens. An address investigation asks for as much as one Etherscan call returns (1,000 records, checked with a free key) of each kind: normal transactions, ERC-20 transfers, internal transfers, and ERC-721 and ERC-1155 NFT transfers. Findings (ETH in and out, fees, counterparties, top tokens, failed transactions) and the sanctions check cover everything fetched. The graph shows up to `MAX_GRAPH_NODES` nodes, sanctioned counterparties first. A transaction investigation shows its status, fee, internal transfers and the token transfers in its receipt. Every address is checked against the OFAC list of sanctioned Ethereum-format addresses. Bitcoin APIs have fixed page sizes (25 transactions per call; 50 on mempool.space's first page), so there is nothing to raise there. The free key allows 3 calls per second and 100,000 a day: the backend spaces its calls to stay under that and caches answers. If the daily limit is reached it stops calling Etherscan for an hour. The key is never saved or shown: evidence URLs and log lines leave it out. API: `GET /api/ethereum/address/{address}`, `/address/{address}/transactions`, `/tx/{hash}`, `/providers`. OFAC lists Ethereum-format addresses without naming a chain, so a match on Base is flagged with that caveat.
 
 ## Holdings, NFTs and live alerts (Alchemy)
 
@@ -100,9 +102,15 @@ The same check covers every website list. Each list that matches is shown with i
 
 From `backend/`: `..\.venv\Scripts\python.exe -m app.intelligence refresh` (or `status`, `check <address>`, or `check-site <url>`). API: `GET /api/indicators/status`, `GET /api/indicators/check/{address}`.
 
-## Graph explorer (advanced graph mode)
+## Graph explorer (the Investigate graph)
 
-The **Graph explorer** page (`#/graph`, or the "Advanced graph" button on an Investigate result for an address) grows a graph of thousands of addresses on Bitcoin, Ethereum, Base or Solana:
+The graph on **Investigate** is the graph explorer. It starts from the lookup's own graph, expands the
+looked-up address once, and grows a graph of thousands of addresses on Bitcoin, Ethereum, Base or Solana.
+Every expansion is saved into the investigation result, so the Evidence tab, the export and the AI analyst
+see it. A timeline slider and a "Hide links under" amount slider filter what is drawn, and **Load older
+transactions** reads history past the first pages on all four chains
+(`POST /api/investigations/older-transactions`). Old `#/graph/<chain>/<addresses>` links from cases and
+alerts open Investigate. How it grows:
 
 - **Step by step.** Load 1 or 2 hops around an address, then double-click any node (or press "Expand" in its details) to grow it. "Expand all" expands every address not expanded yet, up to the per-request limit below.
 - **Node cap.** Set in the form (default 5,000, at most `GRAPH_MAX_NODES`, default 20,000). A bar and a warning show from 80% of the cap; at the cap, expanding stops until you raise it or clear the graph.
@@ -111,7 +119,7 @@ The **Graph explorer** page (`#/graph`, or the "Advanced graph" button on an Inv
 - **Streaming.** `POST /api/graph/expand` answers with one JSON line per fetched address (NDJSON), so the graph grows while the rest load. "Stop" cancels the request and the backend stops fetching.
 - **Rate limits and cost.** Each address is cached for 10 minutes and concurrent requests for the same address share one fetch. Bitcoin (mempool.space, blockstream.info as backup): at most 2 calls at a time, 0.4 s apart, 60 addresses per request. Ethereum: Etherscan first (paced at 3 calls a second), 40 addresses per request, two calls each. Base and Solana use Alchemy (about 480 and 640 compute units per address), so they fetch at most 15 and 8 addresses per request, and graph mode has its own daily Alchemy allowance (`GRAPH_ALCHEMY_DAILY_CU`, default 300,000, about 9M of the free plan's 30M a month); when it is used up, Alchemy-backed expansion stops until midnight UTC. `GET /api/graph/status` shows the allowance and cache.
 - **Exchange labels (Dune).** Once a week the backend reads the exchange address lists that Dune's community table `cex.addresses` is built from (Spellbook seed files on GitHub: free, no key; about 10,800 addresses: 753 Bitcoin, 112 Solana, 4,957 EVM used for both Ethereum and Base) into `backend/data/raw/labels/` (gitignored), and names those addresses in the graph as pink "exchange" nodes, e.g. "Binance 14". Only if GitHub cannot be read does it run one SQL query through the Dune API (`DUNE_API_KEY`), which costs credits; on 8 Nov 2026 that API call was refused by the account's datapoint limit (HTTP 402). Lookups are local. Exchanges are always drawn, never grouped, and never expanded automatically. Refresh by hand with `python -m app.intelligence.cex_labels refresh` (from `backend/`), check with `... status`. **Licence:** the labels come from Dune's Spellbook, under the Business Source License 1.1 until 3 March 2027, which forbids using it in a data or analytics platform offered to third parties: keep it to your own analysis, and check before sharing the dashboard with others. A label is a community claim, not proof.
-- **Limits.** Each address's counterparties come from its newest history only (Bitcoin: one page of 25 to 50 transactions; Ethereum: the newest 1,000 transactions and token transfers; Solana: the newest 15 transactions), and amounts are what that history shows between the two addresses, not balances.
+- **Limits.** Each address's counterparties come from its newest history only (Bitcoin: up to `BTC_ADDRESS_PAGES` pages of 25, about 100 transactions; Ethereum and Base: up to `EVM_LIST_PAGES` pages of 1,000 transactions and token transfers; Solana: the newest `GRAPH_SOLANA_TXS` transactions, 25 by default), and amounts are what that history shows between the two addresses, not balances.
 
 ## Graph measures (NetworkX)
 
@@ -123,31 +131,70 @@ bridges. The measures describe only the graph shown (first page of transactions,
 Clicking a Bitcoin address also offers its **transaction history**, page by page, beyond the first
 page the graph shows (`GET /api/bitcoin/address/{address}/transactions?after_txid=...`).
 
-## Models (offline benchmark)
+## Models
 
-The **Models** page compares a logistic-regression baseline, Random Forest and XGBoost, each with and
-without hop features, on one fixed Elliptic++ split (train steps 1-34, threshold on 31-34, test
-35-49, three seeds), shows the alert threshold re-picked on 2017-2019 data, and scores any address
-from the benchmark dataset with a SHAP explanation. In Investigate, the **Random Forest** and
-**XGBoost** methods do the same and show the SHAP chart under "Why Flagged?". Live addresses cannot be
-scored yet, because live lookups cannot build the hop features; the dashboard says so. Models are not
-in git: build them with `..\.venv\Scripts\python.exe -m training.model_registry` from `backend/`
-(see [docs/ML_PIPELINE.md](docs/ML_PIPELINE.md)). API: `GET /api/models`, `POST /api/models/score`.
+Every Bitcoin address looked up on Investigate gets a **live model score** in the right-hand panel
+(XGBoost by default, Random Forest on the switch), with the SHAP features that pushed it up or down and
+"Why Flagged?" in the tabs. Any other Bitcoin address picked in the graph can be scored with one click
+(`POST /api/investigations/model-score`). Live scores use the models without hop features, from the
+address's last four weeks of activity; they are a pattern match against Elliptic++ labels of 2016-2017,
+not proof, and there are no 2026 labels to measure them against.
 
-## Deploy the frontend to Vercel
+The **Models** page (admins) compares a logistic-regression baseline, Random Forest and XGBoost, each
+with and without hop features, on one fixed Elliptic++ split (train steps 1-34, threshold on 31-34, test
+35-49, three seeds), shows the alert thresholds, and scores benchmark addresses with SHAP. The slim model
+set the API needs is in `backend/models/`; rebuild with `..\.venv\Scripts\python.exe -m training.model_registry`
+from `backend/` (see [docs/ML_PIPELINE.md](docs/ML_PIPELINE.md)). API: `GET /api/models`, `POST /api/models/score`.
 
-Import this repository at https://vercel.com/new and set **Root Directory** to `frontend`.
-Vercel detects Vite and uses `npm run build` with output folder `dist`.
+## Authority red flags (rule packs)
+
+Next to the model score, every Bitcoin address lookup runs **rule packs**: YAML files that turn published
+indicators into cited checks (FATF virtual-asset red flags 2020, FinCEN ransomware 2021 and pig
+butchering 2023, AUSTRAC 2022, OFAC 2021). Each rule reads named facts about the address (pass-through
+ratio, hours to spend, CoinJoin-like transactions, list exposure ...) and ends up matched, clear or not
+checked, always with its citation. Red flags are never mixed into the model score. The **Rule packs**
+page lists the packs and facts; admins switch packs on and off, change weights and upload new packs.
+Write a pack from `backend/rule_packs/_TEMPLATE.yaml` and check it with
+`python -m app.redflags validate my_pack.yaml` (from `backend/`). API: `/api/red-flags/...`.
+
+## x402 payments
+
+The **x402 payments** page and the x402 mode check AI-agent USDC payments on Base: phishing addresses and
+their funders, sanctions, server taint share, large or odd amounts, gift-card and eSIM cash-outs and
+unknown facilitators, using a snapshot built from Peter Robinson's x402analysis (MIT) and the x402scan
+facilitator list (MIT) in `backend/data/x402/`. A monitor watches the riskiest x402 servers (Blockscout),
+or every x402 payment on Base each minute with a Coinbase CDP key (`X402_MONITOR_ENABLED=false` stops it).
+
+## AI analyst (local)
+
+The **AI Analyst** tab on Investigate (analysts and admins) explains the case and answers questions about
+it, using only the case facts: the lookup, model score and SHAP, red flags, list matches and every graph
+expansion. It runs a local model through Ollama (`ollama pull qwen3:8b`), so nothing leaves the computer;
+an analyst can pick Claude through the Claude Code CLI per question instead, which sends the case facts
+to Anthropic. Every answer is checked for addresses, transaction IDs and amounts that are not in the
+facts. Settings: `ANALYST_*` and `OLLAMA_URL` in `backend/.env.example`.
+
+## Evidence export
+
+Every result can be downloaded as **JSON** (the full result and graph) or **Markdown** (summary, findings,
+model score and SHAP, red flags with citations, indicators, evidence, provenance and limitations) from
+the buttons next to the result tabs.
+
+## Deploy
+
+The frontend runs on Vercel (root directory `frontend`) and the backend on Railway (root directory
+`backend`, Docker), both built from `main`. Steps and variables: [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Accounts, roles and pages
 
-The dashboard has a side panel with these pages: **Investigate** (the original lookup and graph), **Cases**,
-**Status** (live lookup sources, the Neon database, sanction-list dates), **Sources** (acknowledgements),
-**BigQuery refresh** (under development) and, for admins, **Users**.
+The dashboard has a side panel with these pages: **Investigate** (lookup, graph explorer, model score,
+red flags, AI analyst), **Cases**, **Live alerts**, **Rule packs**, **x402 payments**, **Status** (data
+sources, API usage, the Neon database, list dates), **Sources** (acknowledgements and licences) and, for
+admins, **Models** and **Users**.
 
 Everyone signs in. New sign-ups are **viewers**: they can use every page but change nothing. An admin can
-make someone an **analyst** (creates cases and adds addresses and transactions to them) or an **admin**
-(also edits Sources, runs BigQuery estimates, deletes cases and manages users). Every change is in the
+make someone an **analyst** (creates cases, adds addresses and transactions to them, uses the AI analyst
+and the watchlist) or an **admin** (also edits Sources and rule packs, deletes cases and manages users). Every change is in the
 audit log on the Users page.
 
 Create the first admin from `backend/` (the password is typed, never shown or stored in plain text):
