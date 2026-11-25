@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { MODES, compatibleMethods } from "../config/modes.js";
 import { FIXTURE_CASES } from "../data/fixtures.js";
 import { runFixtureInvestigation, validateInput } from "../services/runFixtureInvestigation.js";
-import { startInvestigation, streamGraphExpand } from "../api/client.js";
-import { EXPAND_NODE_CAP, EXPAND_PER_NODE, expandableAddress, mergeExpansion } from "../services/expandInvestigationGraph.js";
+import { apiFetch, startInvestigation, streamGraphExpand } from "../api/client.js";
+import { EXPAND_NODE_CAP, EXPAND_PER_NODE, expandableAddress, mergeExpansion, mergeOlderTransactions } from "../services/expandInvestigationGraph.js";
 import { MODEL_METHODS, normalizeBitcoin, requestModelScore, scoreKey, withModelScore } from "../services/modelScore.js";
 import { requestRedFlags, withRedFlags } from "../services/redFlags.js";
 
@@ -48,6 +48,11 @@ export function useInvestigation() {
   const [flags, setFlags] = useState({});
   const flagsRef = useRef(flags);
   flagsRef.current = flags;
+  // Graph explorer on Investigate: extra start addresses (a case opened in the explorer), evidence numbering
+  // for its expansions, and "Load older transactions" for Bitcoin address lookups.
+  const [explorerExtras, setExplorerExtras] = useState(null); // { chain, first, addresses }: used when the lookup of `first` is shown
+  const explorerEvidence = useRef(0);
+  const [older, setOlder] = useState(null); // { status: loading | error | done, text }
 
   // Merge a change into the form and keep dependent choices valid.
   function handleFormChange(changes) {
@@ -96,6 +101,8 @@ export function useInvestigation() {
     }
     requestRef.current?.abort(); // a new Start replaces any request still running
     expandRef.current?.abort();
+    setOlder(null);
+    explorerQueue.current = [];
     setExpandingId("");
     setExpandedIds(new Set());
     setExpandNote(null);
@@ -216,6 +223,74 @@ export function useInvestigation() {
     }
   }
 
+  // The explorer streamed one expansion batch (or opened a group): store it in the result, so the evidence,
+  // the findings tabs and the AI analyst all see what was found. Same shape as "Expand node" above.
+  // Batches are queued and merged together at most about once a second: merging (and re-rendering the
+  // whole Investigate page) for every streamed batch froze the graph on big expansions.
+  const explorerQueue = useRef([]);
+  const explorerTimer = useRef(0);
+  function flushExplorer() {
+    clearTimeout(explorerTimer.current);
+    explorerTimer.current = 0;
+    const queued = explorerQueue.current;
+    if (!queued.length) return;
+    explorerQueue.current = [];
+    setResult((old) => {
+      if (!old || old.data_mode !== "live") return old;
+      let next = old;
+      for (const { batch, chain, evidenceId, investigationId } of queued) {
+        if (investigationId && investigationId !== old.investigation_id) continue;
+        const sample = next.graph.nodes.find((n) => n.id.startsWith(`${chain}:`) && n.id.includes(":address:"));
+        const network = sample ? sample.id.split(":")[1] : "mainnet";
+        const target = { chain, address: batch.expanded.address, prefix: `${chain}:${network}:address:` };
+        next = mergeExpansion(next, batch, target, evidenceId, { nodes: new Set(), links: new Set() });
+      }
+      return next;
+    });
+  }
+  function mergeExplorerBatch(batch, chain, investigationId = null) {
+    explorerQueue.current.push({ batch, chain, investigationId, evidenceId: `ex${++explorerEvidence.current}` });
+    if (!explorerTimer.current) explorerTimer.current = setTimeout(flushExplorer, 1000);
+  }
+
+  // A limitation worth keeping with the case (e.g. the explorer stopped at its node cap).
+  function addLimitation(text) {
+    setResult((old) => (!old || old.limitations.includes(text) ? old : { ...old, limitations: [...old.limitations, text] }));
+  }
+
+  // Open addresses in the explorer from elsewhere (cases, alerts, old #/graph links): look the first one up
+  // and let the explorer expand the rest with it.
+  function openInExplorer(chain, addresses) {
+    const [first, ...rest] = addresses;
+    if (!first) return;
+    setExplorerExtras(rest.length ? { chain, first, addresses: rest } : null);
+    investigateLive(`${chain}_address`, first);
+  }
+
+  // Older history of a looked-up address: Bitcoin 100 transactions at a time, Ethereum/Base the activity below the
+  // oldest block drawn (up to the graph's node limit), Solana the next SOLANA_TX_DETAIL_LIMIT transactions.
+  const olderChain = ["bitcoin", "ethereum", "base", "solana"].find((c) => result?.input?.type === `${c}_address`);
+  const olderCursor = result?.data_mode === "live" && olderChain
+    ? result.uncertainty?.older_cursor || result.uncertainty?.older_after_txid || "" : "";
+  async function loadOlder() {
+    if (!olderCursor || older?.status === "loading") return;
+    const id = result.investigation_id;
+    const evidenceId = `eo${result.evidence.filter((e) => e.id.startsWith("eo")).length + 1}`;
+    setOlder({ status: "loading", text: "Loading older transactions..." });
+    try {
+      const data = await apiFetch("/api/investigations/older-transactions", {
+        method: "POST", body: { chain: olderChain, address: result.input.value, cursor: olderCursor, pages: 4, evidence_id: evidenceId },
+        timeoutMs: 120000,
+      });
+      setResult((old) => (old?.investigation_id === id ? mergeOlderTransactions(old, data) : old));
+      setOlder({ status: "done", text: data.transactions
+        ? `Added ${data.transactions} older transactions${data.complete ? ": that is the whole history." : "."}`
+        : "No older transactions." });
+    } catch (err) {
+      setOlder({ status: "error", text: err.message });
+    }
+  }
+
   // Ask for the live score of one Bitcoin address (once per model, unless force).
   async function scoreAddress(address, family = modelFamily, { force = false } = {}) {
     if (!address) return;
@@ -299,6 +374,7 @@ export function useInvestigation() {
     expandingId, expandedIds, expandNote, canExpand: (id) => Boolean(expandableAddress(result, id)), expandNode,
     modelFamily, setModelFamily, scoreAddress, scoreOf, subjectAddress: subjectAddress(result),
     checkFlags, flagsOf,
+    mergeExplorerBatch, flushExplorer, addLimitation, openInExplorer, explorerExtras, canLoadOlder: Boolean(olderCursor), loadOlder, older,
     setSelectedId, setActiveTab,
     handleFormChange, handleCaseChange, handleStart, handleCancel, handleEvidenceClick, investigateLive,
   };

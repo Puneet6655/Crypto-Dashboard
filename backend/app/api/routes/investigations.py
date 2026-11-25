@@ -19,7 +19,7 @@ from app.providers.solana_alchemy import SolanaProvider
 from app.schemas.investigation import InvestigationRequest, InvestigationResult
 from app.services.investigation_service import UnsupportedInvestigation, run_investigation
 from app.store import RecordingProvider, get_store
-from app.validation import is_bitcoin_address, normalize_address
+from app.validation import is_bitcoin_address, is_txid, normalize_address
 
 router = APIRouter(prefix="/api/investigations", tags=["investigations"])
 
@@ -53,6 +53,61 @@ async def create_investigation(
         raise HTTPException(status_code=exc.status_code, detail=exc.message, headers=exc.headers())
     background.add_task(_save_everything, store, recorder, result)
     return result
+
+
+class OlderTransactionsRequest(BaseModel):
+    chain: Literal["bitcoin", "ethereum", "base", "solana"] = "bitcoin"
+    address: str = Field(min_length=20, max_length=100)
+    # Where to carry on, from the result's uncertainty.older_cursor (or the previous answer's next_cursor):
+    # Bitcoin: the oldest txid read; Ethereum/Base: the highest block still to read; Solana: the oldest signature read.
+    cursor: str | None = Field(default=None, min_length=1, max_length=100)
+    after_txid: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{64}$")  # older name of the Bitcoin cursor
+    pages: int = Field(default=4, ge=1, le=8)  # Bitcoin: 25 confirmed transactions per page
+    evidence_id: str = Field(default="eo1", pattern=r"^[A-Za-z0-9_-]{1,20}$")
+
+
+@router.post("/older-transactions")
+async def older_transactions(
+    request: OlderTransactionsRequest,
+    provider: BitcoinProvider = Depends(get_bitcoin_provider),
+    settings: Settings = Depends(get_settings),
+    indicators: IndicatorIndex = Depends(get_indicator_index),
+    ethereum: FailoverEvmProvider | None = Depends(get_ethereum_provider),
+    base: FailoverEvmProvider | None = Depends(get_base_provider),
+    solana: SolanaProvider | None = Depends(get_solana_provider),
+) -> dict:
+    """Older history of a looked-up address, past what the lookup drew ("Load older transactions" on Investigate).
+    The answer's graph uses the lookup's shape, so the dashboard merges it into the investigation."""
+    from app.services.ethereum_investigation import older_evm_activity
+    from app.services.investigation_service import older_bitcoin_transactions
+    from app.services.solana_investigation import older_solana_activity
+    from app.validation import is_ethereum_address, is_solana_address, is_solana_signature
+
+    cursor = (request.cursor or request.after_txid or "").strip()
+    if not cursor:
+        raise HTTPException(status_code=422, detail="Say where to carry on (cursor).")
+    try:
+        if request.chain == "bitcoin":
+            if not is_bitcoin_address(request.address) or not is_txid(cursor):
+                raise HTTPException(status_code=422, detail="A Bitcoin address and a transaction id are needed.")
+            return await older_bitcoin_transactions(provider, request.address, cursor.lower(), request.pages,
+                                                    request.evidence_id, settings.max_graph_nodes, indicators)
+        if request.chain in ("ethereum", "base"):
+            chain_provider = ethereum if request.chain == "ethereum" else base
+            if chain_provider is None:
+                raise HTTPException(status_code=503, detail=f"{request.chain.title()} lookups are not set up on this server.")
+            if not is_ethereum_address(request.address) or not cursor.isdigit():
+                raise HTTPException(status_code=422, detail="A 0x address and a block number are needed.")
+            return await older_evm_activity(chain_provider, request.chain, request.address, int(cursor),
+                                            request.evidence_id, settings.max_graph_nodes, indicators)
+        if solana is None:
+            raise HTTPException(status_code=503, detail="Solana lookups are not set up on this server.")
+        if not is_solana_address(request.address) or not is_solana_signature(cursor):
+            raise HTTPException(status_code=422, detail="A Solana address and a transaction signature are needed.")
+        return await older_solana_activity(solana, request.address, cursor, request.evidence_id,
+                                           settings.max_graph_nodes, indicators)
+    except ProviderError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message, headers=exc.headers())
 
 
 class ModelScoreRequest(BaseModel):

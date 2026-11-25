@@ -553,3 +553,32 @@ button.link[data-case-type] { cursor: pointer; }
 .expand-note { margin: 4px 0 6px; padding: 6px 10px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); }
 .expand-note.expand-warning { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .expand-note.expand-error { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+
+/* AI Analyst tab (Milestone 14) */
+.analyst { display: grid; gap: 16px; }
+.analyst-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.analyst-provider { display: inline-flex; align-items: center; gap: 6px; }
+.analyst-provider select { width: auto; }
+.analyst-help { margin: 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--warn-soft); color: var(--text); }
+.analyst-block { display: grid; gap: 10px; }
+.analyst-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.analyst-title { margin: 0; font-size: 15px; }
+.analyst-suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
+.analyst-chat { display: grid; gap: 10px; max-height: 480px; overflow-y: auto; }
+.analyst-chat:empty { display: none; }
+.analyst-msg { padding: 10px 12px; border-radius: var(--radius-sm); max-width: 92%; }
+.analyst-msg p { margin: 0; }
+.analyst-user { justify-self: end; background: var(--accent-soft); }
+.analyst-assistant { justify-self: start; background: var(--surface-2); border: 1px solid var(--border); }
+.analyst-answer { display: grid; gap: 6px; }
+.analyst-answer .small { margin: 0; }
+.analyst-text { line-height: 1.55; overflow-wrap: anywhere; display: grid; gap: 6px; }
+.analyst-text p, .analyst-text ul, .analyst-text ol { margin: 0; }
+.analyst-text ul, .analyst-text ol { padding-left: 20px; display: grid; gap: 3px; }
+.analyst-warn { padding: 6px 10px; border-radius: var(--radius-sm); background: var(--warn-soft); color: var(--warn); }
+.analyst-warn code { overflow-wrap: anywhere; }
+.analyst-ask { display: flex; gap: 8px; align-items: flex-end; }
+.analyst-ask textarea { flex: 1; min-width: 0; }
+.analyst-error { margin: 0; color: var(--danger); }
+.analyst-template { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
+.analyst-template summary { cursor: pointer; color: var(--muted); }

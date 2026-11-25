@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import Sigma from "sigma";
 import { EdgeArrowProgram } from "sigma/rendering";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
+import { edgeOutOfTime } from "../w3/timeFilter.js";
 import { W3_EDGE, W3_EDGE_IN, W3_EDGE_OUT, W3_FADED, W3_KIND_COLORS, W3_SIGMA_SETTINGS } from "../w3/sigmaTheme.js";
 
 // The WebGL drawing for advanced graph mode. Sigma draws with WebGL, so it stays smooth with
@@ -20,7 +21,8 @@ const FA2_SETTINGS = {
   strongGravityMode: false,
 };
 
-// view: { hiddenKinds: Set, hiddenNodes: Set, minValue: number, onContext(node, x, y) }.
+// view: { hiddenKinds: Set, hiddenNodes: Set, minValue: number, timeRange: {from, to} | null, timeHidden: Set | null,
+//         onContext(node, x, y) }.
 // Hovering a node also lights up its neighbours, and right-click opens a menu.
 export default function SigmaGraph({ graph, selectedId, onSelect, onExpand, layoutOn, sigmaRef, view = null }) {
   const containerRef = useRef(null);
@@ -83,7 +85,7 @@ export default function SigmaGraph({ graph, selectedId, onSelect, onExpand, layo
   useEffect(() => {
     selectedRef.current = selectedId;
     sigmaRef.current?.refresh({ skipIndexation: true });
-  }, [selectedId, sigmaRef, view?.hiddenKinds, view?.hiddenNodes, view?.minValue]);
+  }, [selectedId, sigmaRef, view?.hiddenKinds, view?.hiddenNodes, view?.minValue, view?.timeRange, view?.timeHidden]);
 
   // 3. The background layout. Killed when switched off or when the graph object changes.
   useEffect(() => {
@@ -118,6 +120,7 @@ export function focusNode(renderer, node) {
 function nodeHidden(graph, node, view) {
   if (!view) return false;
   if (view.hiddenNodes?.has(node)) return true;
+  if (view.timeHidden?.has(node)) return true;
   return view.hiddenKinds?.has(graph.getNodeAttribute(node, "styleKey")) ?? false;
 }
 
@@ -135,6 +138,7 @@ function w3EdgeReducer(graph, edge, data, focus, view) {
   const [source, target] = graph.extremities(edge);
   if (nodeHidden(graph, source, view) || nodeHidden(graph, target, view)) return { ...data, hidden: true };
   if (view?.minValue > 0 && (data.value ?? 0) < view.minValue) return { ...data, hidden: true };
+  if (edgeOutOfTime(data, view?.timeRange)) return { ...data, hidden: true };
   if (!focus || !graph.hasNode(focus)) return { ...data, color: W3_EDGE };
   if (source === focus) return { ...data, color: W3_EDGE_OUT, size: Math.max(data.size ?? 1, 2), zIndex: 1 };
   if (target === focus) return { ...data, color: W3_EDGE_IN, size: Math.max(data.size ?? 1, 2), zIndex: 1 };

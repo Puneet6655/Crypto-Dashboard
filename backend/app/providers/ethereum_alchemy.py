@@ -246,11 +246,12 @@ class AlchemyProvider:
 
         return await self._cached(("address", address), TTL_RECENT, fetch)
 
-    async def _transfers(self, address: str, group: str) -> list[dict]:
+    async def _transfers(self, address: str, group: str, to_block: int | None = None) -> list[dict]:
         """Every transfer in the group sent by or to the address (two calls, up to 1,000 each), deduplicated,
         newest first. Concurrent callers share one fetch."""
         address = address.lower()
-        key = (address, group)
+        # to_block: "Load older transactions" reads only blocks up to it (kept apart from the newest-first lists).
+        key = (address, group) if to_block is None else (address, group, to_block)
         cached = self.cache.get(("transfers", *key))
         if cached is not _MISSING:
             return cached
@@ -260,7 +261,8 @@ class AlchemyProvider:
         future = asyncio.get_running_loop().create_future()
         self._inflight[key] = future
         try:
-            base = {"fromBlock": "0x0", "toBlock": "latest", "category": GROUPS[group], "order": "desc",
+            base = {"fromBlock": "0x0", "toBlock": "latest" if to_block is None else hex(max(0, to_block)),
+                    "category": GROUPS[group], "order": "desc",
                     "withMetadata": True, "excludeZeroValue": False, "maxCount": hex(MAX_RECORDS_PER_CALL)}
             (sent, sent_done, sent_calls), (received, received_done, received_calls) = await asyncio.gather(
                 self._pages({**base, "fromAddress": address}), self._pages({**base, "toAddress": address}))
@@ -322,8 +324,9 @@ class AlchemyProvider:
     def _raw_value(self, row: dict) -> int:
         return to_int((row.get("rawContract") or {}).get("value"), 16) or 0
 
-    async def get_address_transactions(self, address: str, limit: int | None = None) -> list[EthTransaction]:
-        rows = [r for r in await self._transfers(address, "eth") if r.get("category") == "external"]
+    async def get_address_transactions(self, address: str, limit: int | None = None,
+                                       end_block: int | None = None) -> list[EthTransaction]:
+        rows = [r for r in await self._transfers(address, "eth", end_block) if r.get("category") == "external"]
         provenance = self._provenance(f"alchemy_getAssetTransfers external {address.lower()}")
         return [EthTransaction(
             entity_id=f"{self.chain}:{self.network}:tx:{r['hash'].lower()}", network=self.network,
@@ -331,23 +334,26 @@ class AlchemyProvider:
             contract_created=None, value_wei=str(self._raw_value(r)), fee_wei=None, method=None,
             provenance=provenance, **self._common(r)) for r in rows][:limit]
 
-    async def get_token_transfers(self, address: str, limit: int | None = None) -> list[EthTokenTransfer]:
-        rows = [r for r in await self._transfers(address, "tokens") if r.get("category") == "erc20"]
+    async def get_token_transfers(self, address: str, limit: int | None = None,
+                                  end_block: int | None = None) -> list[EthTokenTransfer]:
+        rows = [r for r in await self._transfers(address, "tokens", end_block) if r.get("category") == "erc20"]
         return [EthTokenTransfer(
             token_contract=((r.get("rawContract") or {}).get("address") or "").lower(), token_symbol=plain_text(r.get("asset")),
             token_decimals=to_int((r.get("rawContract") or {}).get("decimal"), 16), from_address=r["from"].lower(),
             to_address=(r.get("to") or "").lower(), value_raw=str(self._raw_value(r)), **self._common(r))
             for r in rows][:limit]
 
-    async def get_internal_transfers(self, address: str, limit: int | None = None) -> list[EthInternalTransfer]:
-        rows = [r for r in await self._transfers(address, "eth") if r.get("category") == "internal"]
+    async def get_internal_transfers(self, address: str, limit: int | None = None,
+                                     end_block: int | None = None) -> list[EthInternalTransfer]:
+        rows = [r for r in await self._transfers(address, "eth", end_block) if r.get("category") == "internal"]
         return [EthInternalTransfer(
             from_address=r["from"].lower(), to_address=lower(r.get("to")), contract_created=None,
             value_wei=str(self._raw_value(r)), kind="call", failed=False, **self._common(r)) for r in rows][:limit]
 
-    async def get_nft_transfers(self, address: str, limit: int | None = None) -> list[EthNftTransfer]:
+    async def get_nft_transfers(self, address: str, limit: int | None = None,
+                                end_block: int | None = None) -> list[EthNftTransfer]:
         out = []
-        for r in await self._transfers(address, "tokens"):
+        for r in await self._transfers(address, "tokens", end_block):
             contract = ((r.get("rawContract") or {}).get("address") or "").lower()
             shared = dict(token_contract=contract, token_name=None, token_symbol=plain_text(r.get("asset")),
                           from_address=r["from"].lower(), to_address=(r.get("to") or "").lower(), **self._common(r))

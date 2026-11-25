@@ -16,7 +16,7 @@ from app.config import get_settings
 from app.intelligence.index import IndicatorIndex, get_indicator_index
 from app.intelligence.screening import Screening, screen_bitcoin
 from app.providers.base import BitcoinProvider
-from app.providers.paging import bitcoin_history
+from app.providers.paging import BTC_PAGE_SIZE, bitcoin_history
 from app.schemas.bitcoin import Provenance, TransactionSummary, format_btc
 from app.schemas.investigation import (
     Evidence,
@@ -317,7 +317,7 @@ async def _investigate_address(request: InvestigationRequest, provider: BitcoinP
         source_timestamps={**sources, **screening.source_timestamps},
         limitations=(COMMON_LIMITATIONS if model_result is None and request.model_score else MODEL_SCORED_LIMITATIONS)
         + ([] if complete else [f"The graph shows the newest {len(transactions)} transactions ({pages} pages of 25, "
-                                "set by BTC_ADDRESS_PAGES); click the address for older pages"]) + model_notes,
+                                "set by BTC_ADDRESS_PAGES); use Load older transactions under the graph for more"]) + model_notes,
         explanation=model_result,
         uncertainty={
             "unconfirmed_tx_count": summary.unconfirmed.tx_count,
@@ -325,9 +325,65 @@ async def _investigate_address(request: InvestigationRequest, provider: BitcoinP
             "transactions_total": total_tx,
             "graph_truncated": builder.truncated,
             "data_sources": ", ".join(sources),
+            # Where "Load older transactions" carries on (POST /api/investigations/older-transactions).
+            **({} if complete else {"older_cursor": _oldest_confirmed(transactions)}),
         },
         scorecard=Scorecard(configured=False),
     )
+
+
+def _oldest_confirmed(transactions: list[TransactionSummary]) -> str:
+    confirmed = [tx for tx in transactions if tx.status == "confirmed"]
+    return confirmed[-1].txid if confirmed else ""
+
+
+async def older_bitcoin_transactions(provider: BitcoinProvider, address: str, after_txid: str, pages: int,
+                                     evidence_id: str, max_nodes: int, indicators: IndicatorIndex) -> dict:
+    """The next `pages` pages of an address's history after `after_txid`, in the lookup's own graph shape
+    (transaction nodes, input and output edges, listed_in on matched addresses), for Investigate's
+    "Load older transactions". Returns the graph part, the evidence entry and where to carry on."""
+    address = normalize_address(address)
+    txs, seen, after, complete = [], set(), after_txid, False
+    for _ in range(max(1, pages)):
+        page = await provider.get_address_transactions(address, after_txid=after)
+        for tx in page:
+            if tx.txid not in seen:
+                seen.add(tx.txid)
+                txs.append(tx)
+        confirmed = [tx for tx in page if tx.status == "confirmed"]
+        if len(confirmed) < BTC_PAGE_SIZE:
+            complete = True
+            break
+        after = confirmed[-1].txid
+    network = "mainnet"
+    builder = GraphBuilder(network, max_nodes)
+    for tx in txs:
+        builder.add_transaction(tx, evidence_id=evidence_id)
+    screening = screen_bitcoin(indicators, network, address, builder.addresses(), first_finding=1, first_evidence=1)
+    builder.mark_listed(screening.flagged_nodes)
+    graph = builder.graph()
+    provenance = txs[0].provenance if txs else None
+    times = [tx.block_time for tx in txs if tx.block_time]
+    evidence = Evidence(
+        id=evidence_id,
+        source=f"{provenance.provider if provenance else 'Bitcoin provider'} address transactions (older pages)",
+        source_url=provenance.source_url if provenance else f"address {address} after {after_txid}",
+        retrieved_at=provenance.retrieved_at if provenance else datetime.now(timezone.utc),
+        method_version=METHOD_VERSION,
+        excerpt=f"{len(txs)} older transactions after {_short(after_txid)}"
+                + (f", {min(times):%Y-%m-%d} to {max(times):%Y-%m-%d}" if times else "")
+                + (" (reached the oldest)" if complete else ""),
+    )
+    return {
+        "address": address,
+        "transactions": len(txs),
+        "complete": complete,
+        "chain": "bitcoin",
+        "next_cursor": "" if complete else _oldest_confirmed(txs),
+        "graph": graph.model_dump(mode="json"),
+        "evidence": evidence.model_dump(mode="json"),
+        "listed": screening.flagged_nodes,
+    }
 
 
 async def _model_score(provider, address: str, entity_id: str, first_finding: int, first_evidence: int):

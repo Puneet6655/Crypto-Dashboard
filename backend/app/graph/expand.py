@@ -106,6 +106,7 @@ class Counterparty:
     received_txs: int = 0
     tokens: Counter = field(default_factory=Counter)  # token symbol -> transfers with a non-zero amount
     zero_value_txs: int = 0
+    first_time: datetime | None = None  # oldest and newest transfer with this counterparty (time slider)
     last_time: datetime | None = None
 
     @property
@@ -119,6 +120,8 @@ class Counterparty:
     def seen(self, when: datetime | None) -> None:
         if when and (self.last_time is None or when > self.last_time):
             self.last_time = when
+        if when and (self.first_time is None or when < self.first_time):
+            self.first_time = when
 
 
 @dataclass
@@ -415,9 +418,20 @@ def _listed(index: IndicatorIndex | None, chain: str, address: str) -> list[str]
     return list(dict.fromkeys(hit.title for hit in index.lookup(address, source_ids)))
 
 
+def _iso(when: datetime | None) -> str | None:
+    return when.isoformat() if when else None
+
+
+def _span(cps) -> tuple[datetime | None, datetime | None]:
+    """Oldest and newest transfer time over some counterparties (None when none had a time)."""
+    firsts = [cp.first_time for cp in cps if cp.first_time]
+    lasts = [cp.last_time for cp in cps if cp.last_time]
+    return (min(firsts) if firsts else None), (max(lasts) if lasts else None)
+
+
 def _member(cp: Counterparty) -> dict:
     return {"address": cp.address, "sent": _fmt(cp.sent), "received": _fmt(cp.received), "tx_count": cp.tx_count,
-            "tokens": dict(cp.tokens.most_common(3))}
+            "tokens": dict(cp.tokens.most_common(3)), "first_time": _iso(cp.first_time), "last_time": _iso(cp.last_time)}
 
 
 def _edges_for(chain: str, center: str, target: str, cp_like: dict) -> list[dict]:
@@ -425,12 +439,14 @@ def _edges_for(chain: str, center: str, target: str, cp_like: dict) -> list[dict
     unit = UNIT[chain]
     edges = []
     tokens = ", ".join(f"{sym} x{n}" for sym, n in (cp_like.get("tokens") or {}).items())
+    # When the money moved (oldest and newest transfer), so the time slider can hide links outside a period.
+    times = {"first_time": _iso(cp_like.get("first_time")), "last_time": _iso(cp_like.get("last_time"))}
     if cp_like["sent_txs"]:
         edges.append({"id": f"{center}>{target}", "source": center, "target": target, "value": cp_like["sent"],
-                      "tx_count": cp_like["sent_txs"], "unit": unit, "tokens": tokens})
+                      "tx_count": cp_like["sent_txs"], "unit": unit, "tokens": tokens, **times})
     if cp_like["received_txs"]:
         edges.append({"id": f"{target}>{center}", "source": target, "target": center, "value": cp_like["received"],
-                      "tx_count": cp_like["received_txs"], "unit": unit, "tokens": tokens})
+                      "tx_count": cp_like["received_txs"], "unit": unit, "tokens": tokens, **times})
     return edges
 
 
@@ -485,7 +501,8 @@ def build_batch(n: Neighbors, per_node_limit: int, index: IndicatorIndex | None,
                       "label": _name(cp.address, ex), "expanded": False, "listed": flags, "exchange": ex})
         edges += _edges_for(chain, center, cid, {"sent": _fmt(cp.sent), "received": _fmt(cp.received),
                                                  "sent_txs": cp.sent_txs, "received_txs": cp.received_txs,
-                                                 "tokens": dict(cp.tokens.most_common(3))})
+                                                 "tokens": dict(cp.tokens.most_common(3)),
+                                                 "first_time": cp.first_time, "last_time": cp.last_time})
 
     for kind, group, title in (("dust", dust, "dust or zero-value"), ("more", rest, "more")):
         if not group:
@@ -497,6 +514,7 @@ def build_batch(n: Neighbors, per_node_limit: int, index: IndicatorIndex | None,
         totals = {"sent": _fmt(sum((cp.sent for cp in group), Decimal(0))),
                   "received": _fmt(sum((cp.received for cp in group), Decimal(0))),
                   "sent_txs": sum(cp.sent_txs for cp in group), "received_txs": sum(cp.received_txs for cp in group)}
+        totals["first_time"], totals["last_time"] = _span(group)
         edges += _edges_for(chain, center, sid, totals)
 
     next_up = [cp.address for cp, _ in listed] + [cp.address for cp in shown]

@@ -1,5 +1,5 @@
 import { METHODS } from "../config/modes.js";
-import GraphView from "../components/GraphView.jsx";
+import InvestigateGraph from "../investigate/InvestigateGraph.jsx";
 import EntityDetails from "../components/EntityDetails.jsx";
 import ResultTabs from "../components/ResultTabs.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -18,6 +18,11 @@ export default function InvestigatePage({ investigation: inv }) {
     inv.setActiveTab("Why Flagged?");
     requestAnimationFrame(() => document.querySelector(".tabs-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
+  // "AI analyst" in the header: open its tab (the local model explains the case and answers questions).
+  const showAnalyst = () => {
+    inv.setActiveTab("AI Analyst");
+    requestAnimationFrame(() => document.querySelector(".tabs-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
 
   return (
     <>
@@ -27,10 +32,10 @@ export default function InvestigatePage({ investigation: inv }) {
         subtitle={"Look up an address, transaction or website on Bitcoin, Ethereum, Base or Solana. Click anything in the graph for its actions."}
       >
         {subject && <AddToCaseButton item={subject} />}
-        {graphLink(result) && (
-          <a className="secondary" href={graphLink(result)} title="Open this address in advanced graph mode (thousands of nodes)">
-            Advanced graph
-          </a>
+        {inv.status === "done" && result && (
+          <button type="button" className="secondary" onClick={showAnalyst} title="Ask the local AI analyst to explain this case">
+            AI analyst
+          </button>
         )}
         <span className={`data-badge data-${result?.data_mode ?? "none"}`}>
           Data: {result ? result.data_mode.toUpperCase() : "none yet"}
@@ -41,7 +46,7 @@ export default function InvestigatePage({ investigation: inv }) {
           Bitcoin addresses get the live model score automatically. */}
       <W3SearchPanel layout="bar" form={inv.form} onFormChange={inv.handleFormChange} onStart={inv.handleStart} isLoading={inv.status === "loading"} />
       <div className="inv-layout">
-        <GraphView
+        <InvestigateGraph
           status={inv.status}
           error={inv.error}
           result={result}
@@ -73,13 +78,6 @@ export default function InvestigatePage({ investigation: inv }) {
       />
     </>
   );
-}
-
-// #/graph/<chain>/<address> when the investigation was about an address graph mode supports.
-function graphLink(result) {
-  const { type, value } = result?.input ?? {};
-  const chain = ["bitcoin", "ethereum", "base", "solana"].find((c) => type === `${c}_address`);
-  return chain && value ? `#/graph/${chain}/${encodeURIComponent(value)}` : null;
 }
 
 // The address or transaction the investigation started from, as a case item.

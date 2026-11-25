@@ -77,7 +77,8 @@ def _describe(t: SolTransfer) -> str:
 def _add_tx(builder: GraphBuilder, tx: SolTransaction, evidence_id: str, focus: str | None = None) -> None:
     """Transaction node, then sender -> tx -> receiver for each transfer (those touching `focus` first)."""
     node = GraphNode(id=tx.entity_id, type="transaction", label=f"tx {_short(tx.signature)}", details={
-        "status": tx.status, "slot": tx.slot, "fee_sol": sol(tx.fee_lamports),
+        "status": tx.status, "slot": tx.slot, "block_time": tx.block_time.isoformat() if tx.block_time else None,
+        "fee_sol": sol(tx.fee_lamports),
         "programs": ", ".join(p for p in tx.programs[:6] if p != SYSTEM_PROGRAM) or "system"})
     if not builder.add_node(node):
         return
@@ -232,9 +233,13 @@ async def _investigate_address(request, address: str, provider, max_nodes: int,
               f"The graph shows up to {max_nodes} nodes: sanctioned counterparties first, then the newest activity"]
     if not complete:
         limits.append(f"The signature list stopped at {MAX_SIGNATURES:,}, so older activity is not included")
+    # "Load older transactions" carries on before the oldest transaction read in full.
+    read = signatures[:read_limit]
+    more = len(signatures) > len(read) or not complete
     return _result(request, address, findings, screening, builder, evidence, {p.provider: p.retrieved_at}, limits,
                    {"signatures_fetched": len(signatures), "transactions_read": len(detailed),
-                    "counterparties": len(counterparties), "history_complete": complete})
+                    "counterparties": len(counterparties), "history_complete": complete,
+                    **({"older_cursor": read[-1].signature} if read and more else {})})
 
 
 # ---- single transaction -------------------------------------------------------------------
@@ -271,3 +276,34 @@ async def _investigate_transaction(request, signature: str, provider, max_nodes:
     return _result(request, signature, findings, screening, builder, evidence, {p.provider: p.retrieved_at},
                    ["Swaps and other program calls appear as their plain SOL and token transfers only"],
                    {"transfers": len(tx.transfers)})
+
+
+# ---- older activity ("Load older transactions" on Investigate) -------------------------------
+
+async def older_solana_activity(provider, address: str, before: str, evidence_id: str, max_nodes: int,
+                                indicators: IndicatorIndex) -> dict:
+    """The next SOLANA_TX_DETAIL_LIMIT transactions older than `before`, read in full, in the lookup's graph shape."""
+    read_limit = get_settings().solana_tx_detail_limit
+    signatures = await provider.get_signatures(address, limit=read_limit, before=before)
+    detailed = [tx for tx in await provider.get_transactions([s.signature for s in signatures]) if tx is not None]
+    network = next((tx.network for tx in detailed), "mainnet")
+    builder = GraphBuilder(network, max_nodes, chain="solana")
+    builder.add_node(builder.address_node(address))
+    for tx in sorted(detailed, key=lambda tx: tx.slot or 0, reverse=True):
+        _add_tx(builder, tx, evidence_id, focus=address)
+    screening = screen_addresses(indicators, "solana", network, address, builder.addresses(), first_finding=1,
+                                 first_evidence=1, scope="addresses in the older transactions")
+    builder.mark_listed(screening.flagged_nodes)
+    complete = len(signatures) < read_limit
+    times = [s.block_time for s in signatures if s.block_time]
+    return {
+        "address": address, "chain": "solana", "transactions": len(detailed), "complete": complete,
+        "next_cursor": "" if complete or not signatures else signatures[-1].signature,
+        "graph": builder.graph().model_dump(mode="json"),
+        "evidence": Evidence(id=evidence_id, source="Alchemy Solana getSignaturesForAddress + getTransaction (older)",
+                             source_url=f"{provider.base_url} getSignaturesForAddress {address} before={before[:12]}...",
+                             retrieved_at=datetime.now(timezone.utc), method_version=METHOD_VERSION,
+                             excerpt=f"{len(detailed)} older transactions read in full"
+                                     + (f", {min(times):%Y-%m-%d} to {max(times):%Y-%m-%d}" if times else "")
+                                     + (" (reached the oldest)" if complete else "")).model_dump(mode="json"),
+    }

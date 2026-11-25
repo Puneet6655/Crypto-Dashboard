@@ -255,15 +255,16 @@ class SolanaProvider:
 
         return await self._cached(("address", address), TTL_RECENT, fetch)
 
-    async def get_signatures(self, address: str, limit: int = MAX_SIGNATURES) -> list[SolSignature]:
-        """The newest transactions the address took part in, newest first (one call, up to 1,000)."""
+    async def get_signatures(self, address: str, limit: int = MAX_SIGNATURES, before: str | None = None) -> list[SolSignature]:
+        """The newest transactions the address took part in, newest first (one call, up to 1,000).
+        before: only transactions older than this signature ("Load older transactions")."""
         async def fetch():
-            rows = await self._rpc("getSignaturesForAddress",
-                                   [address, {"limit": min(limit, MAX_SIGNATURES), "commitment": "confirmed"}])
+            options = {"limit": min(limit, MAX_SIGNATURES), "commitment": "confirmed", **({"before": before} if before else {})}
+            rows = await self._rpc("getSignaturesForAddress", [address, options])
             return [SolSignature(signature=r["signature"], slot=_int(r.get("slot")), block_time=_time(r.get("blockTime")),
                                  failed=r.get("err") is not None) for r in rows or [] if r.get("signature")]
 
-        return await self._cached(("signatures", address, limit), TTL_RECENT, fetch)
+        return await self._cached(("signatures", address, limit) + ((before,) if before else ()), TTL_RECENT, fetch)
 
     async def get_holdings(self, address: str) -> SolHoldings:
         """SOL balance and SPL token accounts with a balance (classic and Token-2022 programs, 30 CU)."""

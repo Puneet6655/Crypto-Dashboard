@@ -218,13 +218,15 @@ class EtherscanProvider:
         return {"module": "account", "action": action, "address": address.lower(), "startblock": 0,
                 "endblock": 99_999_999, "page": 1, "offset": min(limit, MAX_RECORDS_PER_CALL), "sort": "desc"}
 
-    async def _list(self, action: str, address: str, limit: int | None, convert) -> list:
+    async def _list(self, action: str, address: str, limit: int | None, convert, end_block: int | None = None) -> list:
         """Newest-first rows of one list (1,000 per call, the most Etherscan returns), converted; cached for 30 s.
 
         When a page comes back full, the next page is read too, up to max_pages (EVM_LIST_PAGES) or `limit`
         rows. Each extra page is one more call at 3 a second, so only busy addresses pay for it."""
         limit = min(limit or self.max_pages * MAX_RECORDS_PER_CALL, MAX_LIST_ROWS)
         params = self._list_params(action, address, limit)
+        if end_block is not None:  # "Load older transactions": only blocks up to end_block
+            params["endblock"] = max(0, end_block)
         pages = -(-limit // params["offset"])
 
         async def fetch():
@@ -243,32 +245,39 @@ class EtherscanProvider:
                 full = len(rows) >= params["offset"]
                 if not full:
                     break
-            self._list_complete[(action, address.lower())] = not full
+            self._list_complete[(action, address.lower()) if end_block is None else (action, address.lower(), end_block)] = not full
             return out[:limit]
 
-        return list(await self._cached((action, address.lower(), params["offset"], pages), TTL_RECENT, fetch))
+        key = (action, address.lower(), params["offset"], pages) + (() if end_block is None else (end_block,))
+        return list(await self._cached(key, TTL_RECENT, fetch))
 
-    async def get_address_transactions(self, address: str, limit: int | None = None) -> list[EthTransaction]:
+    async def get_address_transactions(self, address: str, limit: int | None = None,
+                                       end_block: int | None = None) -> list[EthTransaction]:
         """The newest normal transactions sent or received by the address (1,000 rows per call; full pages are followed up to EVM_LIST_PAGES)."""
-        return await self._list("txlist", address, limit, self._from_txlist)
+        return await self._list("txlist", address, limit, self._from_txlist, end_block)
 
-    async def get_token_transfers(self, address: str, limit: int | None = None) -> list[EthTokenTransfer]:
+    async def get_token_transfers(self, address: str, limit: int | None = None,
+                                  end_block: int | None = None) -> list[EthTokenTransfer]:
         """The newest ERC-20 transfers to or from the address (1,000 rows per call; full pages are followed up to EVM_LIST_PAGES)."""
         return await self._list("tokentx", address, limit, lambda row, _: EthTokenTransfer(
             tx_hash=row["hash"].lower(), block_number=_int(row.get("blockNumber")),
             block_time=_time(_int(row.get("timeStamp"))), token_contract=row["contractAddress"].lower(),
             token_symbol=_text(row.get("tokenSymbol")), token_decimals=_int(row.get("tokenDecimal")),
-            from_address=row["from"].lower(), to_address=row["to"].lower(), value_raw=str(_int(row.get("value")) or 0)))
+            from_address=row["from"].lower(), to_address=row["to"].lower(), value_raw=str(_int(row.get("value")) or 0)),
+            end_block)
 
-    async def get_internal_transfers(self, address: str, limit: int | None = None) -> list[EthInternalTransfer]:
+    async def get_internal_transfers(self, address: str, limit: int | None = None,
+                                     end_block: int | None = None) -> list[EthInternalTransfer]:
         """The newest internal ETH transfers (contract traces) touching the address (1,000 rows per call; full pages are followed up to EVM_LIST_PAGES)."""
         return await self._list("txlistinternal", address, limit, lambda row, _: EthInternalTransfer(
             tx_hash=row["hash"].lower(), block_number=_int(row.get("blockNumber")),
             block_time=_time(_int(row.get("timeStamp"))), from_address=row["from"].lower(),
             to_address=_addr(row.get("to")) or None, contract_created=_addr(row.get("contractAddress")) or None,
-            value_wei=str(_int(row.get("value")) or 0), kind=row.get("type") or None, failed=row.get("isError") == "1"))
+            value_wei=str(_int(row.get("value")) or 0), kind=row.get("type") or None, failed=row.get("isError") == "1"),
+            end_block)
 
-    async def get_nft_transfers(self, address: str, limit: int | None = None) -> list[EthNftTransfer]:
+    async def get_nft_transfers(self, address: str, limit: int | None = None,
+                                end_block: int | None = None) -> list[EthNftTransfer]:
         """The newest ERC-721 and ERC-1155 transfers (two lists, 1,000 rows per call, up to EVM_LIST_PAGES pages each), newest first."""
         def nft(standard):
             return lambda row, _: EthNftTransfer(
@@ -278,8 +287,10 @@ class EtherscanProvider:
                 token_symbol=_text(row.get("tokenSymbol")), token_id=str(row.get("tokenID") or ""),
                 quantity=str(row.get("tokenValue") or "1"), from_address=row["from"].lower(),
                 to_address=row["to"].lower())
-        erc721, erc1155 = await asyncio.gather(self._list("tokennfttx", address, limit, nft("ERC-721")),
-                                               self._list("token1155tx", address, limit, nft("ERC-1155")))
+        erc721, erc1155 = await asyncio.gather(self._list("tokennfttx", address, limit, nft("ERC-721"), end_block),
+                                               self._list("token1155tx", address, limit, nft("ERC-1155"), end_block))
+        if end_block is not None:
+            return sorted(erc721 + erc1155, key=lambda t: t.block_number or 0, reverse=True)
         self._nft_complete[address.lower()] = (self._list_complete.get(("tokennfttx", address.lower()), True)
                                                and self._list_complete.get(("token1155tx", address.lower()), True))
         return sorted(erc721 + erc1155, key=lambda t: t.block_number or 0, reverse=True)

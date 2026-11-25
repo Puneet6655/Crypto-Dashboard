@@ -1,12 +1,12 @@
 import { useEffect } from "react";
 import { caseItemAttrs, itemFromNode } from "../cases/caseItems.js";
 import ShapChart from "./ShapChart.jsx";
+import AnalystPanel from "./AnalystPanel.jsx";
 import { downloadEvidence } from "../services/evidenceExport.js";
 
-export const TABS = ["Findings", "Why Flagged?", "Evidence", "Provenance", "Explanation", "Evidence Assessment"];
+export const TABS = ["Findings", "Why Flagged?", "Evidence", "Provenance", "AI Analyst", "Evidence Assessment"];
 
-// Build a plain-language summary only from the findings and evidence we hold.
-// Milestone 14 grows this into the AI Analyst; it never adds facts of its own.
+// Build a plain-language summary only from the findings and evidence we hold (shown under the AI Analyst).
 function templateSummary(result) {
   const lines = result.findings.map((f) => `${f.title} [${f.evidence_ids.join(", ")}]`);
   return `This ${result.data_mode} case has ${result.findings.length} finding(s): ${lines.join("; ")}.`;
@@ -144,11 +144,17 @@ export default function ResultTabs({ result, active, onTabChange: setActive, hig
           </dl>
         )}
 
-        {active === "Explanation" && (
-          <p>
-            {templateSummary(result)}
-            <span className="small block">Template summary built only from the findings above.</span>
-          </p>
+        {active === "AI Analyst" && (
+          <>
+            <AnalystPanel key={result.investigation_id} result={result} />
+            <details className="analyst-template">
+              <summary className="small">Template summary (no AI)</summary>
+              <p>
+                {templateSummary(result)}
+                <span className="small block">Built only from the findings above.</span>
+              </p>
+            </details>
+          </>
         )}
 
         {active === "Evidence Assessment" && (

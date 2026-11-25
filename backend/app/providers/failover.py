@@ -314,20 +314,24 @@ class FailoverEvmProvider(FailoverChain):
     async def get_address_summary(self, address: str):
         return await self._call("get_address_summary", (address,), ("address", address), lambda _: TTL_ADDRESS_SUMMARY)
 
-    async def _list(self, method: str, address: str):
-        return list(await self._call(method, (address,), (method, address), lambda _: TTL_FIRST_PAGE))
+    async def _list(self, method: str, address: str, end_block: int | None = None):
+        if end_block is None:
+            return list(await self._call(method, (address,), (method, address), lambda _: TTL_FIRST_PAGE))
+        # "Load older transactions": blocks up to end_block only (limit None = the source's usual pages).
+        return list(await self._call(method, (address, None, end_block), (method, address, end_block),
+                                     lambda _: TTL_OLDER_PAGE))
 
-    async def get_address_transactions(self, address: str):
-        return await self._list("get_address_transactions", address)
+    async def get_address_transactions(self, address: str, end_block: int | None = None):
+        return await self._list("get_address_transactions", address, end_block)
 
-    async def get_token_transfers(self, address: str):
-        return await self._list("get_token_transfers", address)
+    async def get_token_transfers(self, address: str, end_block: int | None = None):
+        return await self._list("get_token_transfers", address, end_block)
 
-    async def get_internal_transfers(self, address: str):
-        return await self._list("get_internal_transfers", address)
+    async def get_internal_transfers(self, address: str, end_block: int | None = None):
+        return await self._list("get_internal_transfers", address, end_block)
 
-    async def get_nft_transfers(self, address: str):
-        return await self._list("get_nft_transfers", address)
+    async def get_nft_transfers(self, address: str, end_block: int | None = None):
+        return await self._list("get_nft_transfers", address, end_block)
 
     async def get_transaction(self, tx_hash: str):
         return await self._call("get_transaction", (tx_hash,), ("tx", tx_hash),

@@ -5,6 +5,7 @@ import { useCases } from "../cases/CasesContext.jsx";
 import { itemFromNode } from "../cases/caseItems.js";
 import { useToast } from "../components/Toasts.jsx";
 import { W3_EDGE_IN, W3_EDGE_OUT, W3_KIND_COLORS } from "./sigmaTheme.js";
+import { edgeOutOfTime } from "./timeFilter.js";
 
 // Graph explorer extras for Web3 mode: right-click menu, live search suggestions, filters,
 // and "money flow" particles drawn over the WebGL graph.
@@ -187,6 +188,8 @@ export function W3FlowOverlay({ sigmaRef, graph, focusId, view, on }) {
       for (const edge of edges) {
         const [s, t] = graph.extremities(edge);
         if (v?.hiddenNodes?.has(s) || v?.hiddenNodes?.has(t)) continue;
+        if (v?.timeHidden?.has(s) || v?.timeHidden?.has(t)) continue;
+        if (edgeOutOfTime(graph.getEdgeAttributes(edge), v?.timeRange)) continue;
         const ks = graph.getNodeAttribute(s, "styleKey"), kt = graph.getNodeAttribute(t, "styleKey");
         if (v?.hiddenKinds?.has(ks) || v?.hiddenKinds?.has(kt)) continue;
         const value = graph.getEdgeAttribute(edge, "value") ?? 0;

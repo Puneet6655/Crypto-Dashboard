@@ -16,6 +16,8 @@ export const W3_KIND_COLORS = {
   listed: "#e5484d",
   dust: "#a0a9b8",
   more: "#e09b1a",
+  transaction: "#8b5cf6",
+  other: "#64748b",
 };
 
 function roundRect(ctx, x, y, w, h, r) {

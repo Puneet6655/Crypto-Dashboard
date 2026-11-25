@@ -84,6 +84,14 @@ def test_counterparties_dust_and_summary():
     assert all(e["source"] in ids and e["target"] in ids for e in edges)
 
 
+def test_edges_carry_first_and_last_transfer_times():
+    # The explorer's timeline slider hides links outside a period, so every edge says when money moved.
+    n = asyncio.run(gx.fetch_bitcoin(FakeBitcoin({ME: me_page()}), ME))
+    _, nodes, edges, _ = gx.build_batch(n, per_node_limit=10, index=FakeIndex())
+    assert edges and all(e["last_time"] and e["first_time"] <= e["last_time"] for e in edges)
+    more = next(node for node in nodes if node["kind"] == "more")
+    assert all(m["last_time"] for m in more["members"])
+
 def test_busy_address_is_a_hub():
     burst = [tx(i, [(addr(i), 2_000_000)], [(ME, 1_000_000)], when=T0 + timedelta(minutes=i)) for i in range(30)]
     n = asyncio.run(gx.fetch_bitcoin(FakeBitcoin({ME: burst}), ME))

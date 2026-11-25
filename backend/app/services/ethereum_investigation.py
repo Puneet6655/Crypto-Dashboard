@@ -111,7 +111,8 @@ def _link(builder: GraphBuilder, edge_id: str, tx_id: str, sender: str | None, r
 
 def _add_tx(builder: GraphBuilder, tx: EthTransaction, evidence_id: str) -> None:
     tx_id = _tx_node(builder, tx.network, tx.tx_hash, {
-        "status": tx.status, "block_number": tx.block_number, "value_eth": eth(tx.value_wei),
+        "status": tx.status, "block_number": tx.block_number,
+        "block_time": tx.block_time.isoformat() if tx.block_time else None, "value_eth": eth(tx.value_wei),
         "fee_eth": eth(tx.fee_wei) if tx.fee_wei else None, "method": tx.method})
     if tx_id:
         value = f"{eth(tx.value_wei)} ETH"
@@ -121,14 +122,14 @@ def _add_tx(builder: GraphBuilder, tx: EthTransaction, evidence_id: str) -> None
 
 
 def _add_token(builder: GraphBuilder, t: EthTokenTransfer, n: int, network: str, evidence_id: str) -> None:
-    tx_id = _tx_node(builder, network, t.tx_hash, {"block_number": t.block_number})
+    tx_id = _tx_node(builder, network, t.tx_hash, {"block_number": t.block_number, "block_time": t.block_time.isoformat() if t.block_time else None})
     if tx_id:
         _link(builder, f"{t.tx_hash}:token:{n}", tx_id, t.from_address, t.to_address,
               f"sent {_token(t)}", f"received {_token(t)}", evidence_id)
 
 
 def _add_internal(builder: GraphBuilder, t: EthInternalTransfer, n: int, network: str, evidence_id: str) -> None:
-    tx_id = _tx_node(builder, network, t.tx_hash, {"block_number": t.block_number})
+    tx_id = _tx_node(builder, network, t.tx_hash, {"block_number": t.block_number, "block_time": t.block_time.isoformat() if t.block_time else None})
     if tx_id:
         value = f"{eth(t.value_wei)} ETH" + (" (failed)" if t.failed else "")
         _link(builder, f"{t.tx_hash}:internal:{n}", tx_id, t.from_address, t.to_address or t.contract_created,
@@ -136,7 +137,7 @@ def _add_internal(builder: GraphBuilder, t: EthInternalTransfer, n: int, network
 
 
 def _add_nft(builder: GraphBuilder, t: EthNftTransfer, n: int, network: str, evidence_id: str) -> None:
-    tx_id = _tx_node(builder, network, t.tx_hash, {"block_number": t.block_number})
+    tx_id = _tx_node(builder, network, t.tx_hash, {"block_number": t.block_number, "block_time": t.block_time.isoformat() if t.block_time else None})
     if tx_id:
         _link(builder, f"{t.tx_hash}:nft:{n}", tx_id, t.from_address, t.to_address,
               f"sent NFT {_nft(t)}", f"received NFT {_nft(t)}", evidence_id)
@@ -218,8 +219,12 @@ async def _investigate_address(request: InvestigationRequest, chain: str, provid
               "token": lambda t, n: _add_token(builder, t, n, network, "e3"),
               "internal": lambda t, n: _add_internal(builder, t, n, network, "e4"),
               "nft": lambda t, n: _add_nft(builder, t, n, network, "e5")}
-    for _, kind, item, n in events:
+    last_block = None  # the oldest block of the newest-first activity drawn: "Load older transactions" goes on below it
+    for event in events:
+        block, kind, item, n = event
         adders[kind](item, n)
+        if block and not involves_flagged(event) and f"{chain}:{network}:tx:{item.tx_hash}" in builder.nodes:
+            last_block = block
 
     # Point finding links at nodes that made it into the graph.
     in_graph = set(builder.nodes)
@@ -240,7 +245,8 @@ async def _investigate_address(request: InvestigationRequest, chain: str, provid
         {"transactions_fetched": len(txs), "token_transfers_fetched": len(tokens),
          "internal_transfers_fetched": len(internal), "nft_transfers_fetched": len(nfts),
          "counterparties": len(counterparties), "history_complete": complete,
-         "sent_tx_count": summary.sent_tx_count})
+         "sent_tx_count": summary.sent_tx_count,
+         **({"older_cursor": str(last_block - 1)} if last_block and (builder.truncated or not complete) else {})})
 
 
 def _address_evidence(provider, address, summary, txs, tokens, internal, nfts) -> tuple[list[Evidence], dict]:
@@ -376,3 +382,53 @@ async def _investigate_transaction(request: InvestigationRequest, chain: str, pr
                    {tx.provenance.provider: tx.provenance.retrieved_at},
                    CHAIN_LIMITATIONS[chain] + ["Token amounts from the receipt are raw units; the token's symbol is not looked up"],
                    {"pending": tx.status == "pending"})
+
+
+# ---- older activity ("Load older transactions" on Investigate) -------------------------------
+
+async def older_evm_activity(provider, chain: str, address: str, end_block: int, evidence_id: str, max_nodes: int,
+                             indicators: IndicatorIndex) -> dict:
+    """Activity of an address in blocks up to end_block, newest first, in the lookup's graph shape (transaction
+    nodes, sender -> tx -> receiver edges, listed_in on matched addresses), for the dashboard to merge in."""
+    address = normalize_hex(address)
+    txs, tokens, internal, nfts = await asyncio.gather(
+        provider.get_address_transactions(address, end_block=end_block),
+        provider.get_token_transfers(address, end_block=end_block),
+        provider.get_internal_transfers(address, end_block=end_block),
+        provider.get_nft_transfers(address, end_block=end_block))
+    network = next((t.network for t in txs), "mainnet")
+    builder = GraphBuilder(network, max_nodes, chain=chain)
+    builder.add_node(builder.address_node(address))
+    events = ([(t.block_number or 0, "tx", t, 0) for t in txs]
+              + [(t.block_number or 0, "token", t, n) for n, t in enumerate(tokens)]
+              + [(t.block_number or 0, "internal", t, n) for n, t in enumerate(internal)]
+              + [(t.block_number or 0, "nft", t, n) for n, t in enumerate(nfts)])
+    events.sort(key=lambda e: e[0], reverse=True)
+    adders = {"tx": lambda t, n: _add_tx(builder, t, evidence_id),
+              "token": lambda t, n: _add_token(builder, t, n, network, evidence_id),
+              "internal": lambda t, n: _add_internal(builder, t, n, network, evidence_id),
+              "nft": lambda t, n: _add_nft(builder, t, n, network, evidence_id)}
+    last_block, added = None, 0
+    for block, kind, item, n in events:
+        adders[kind](item, n)
+        if f"{chain}:{network}:tx:{item.tx_hash}" in builder.nodes:
+            last_block, added = block, added + 1
+    screening = screen_addresses(indicators, chain, network, address, builder.addresses(), first_finding=1,
+                                 first_evidence=1, scope="addresses in the older activity")
+    builder.mark_listed(screening.flagged_nodes)
+    full_lists = all(len(group) < MAX for group in (txs, tokens, internal))
+    complete = not events or (full_lists and not builder.truncated)
+    times = [t.block_time for group in (txs, tokens, internal, nfts) for t in group if t.block_time]
+    name, url = provider.describe("get_address_transactions", address) if hasattr(provider, "describe") else (chain, "")
+    transactions = sum(1 for node in builder.nodes.values() if node.type == "transaction")
+    return {
+        "address": address, "chain": chain, "transactions": transactions, "complete": complete,
+        "next_cursor": "" if complete or not last_block else str(last_block - 1),
+        "graph": builder.graph().model_dump(mode="json"),
+        "evidence": Evidence(id=evidence_id, source=f"{name} older activity (blocks up to {end_block:,})",
+                             source_url=url, retrieved_at=datetime.now(timezone.utc), method_version=METHOD_VERSION,
+                             excerpt=f"{len(txs):,} transactions, {len(tokens):,} token, {len(internal):,} internal and "
+                                     f"{len(nfts):,} NFT transfers up to block {end_block:,}"
+                                     + (f", {min(times):%Y-%m-%d} to {max(times):%Y-%m-%d}" if times else "")
+                                     + (" (reached the oldest)" if complete else "")).model_dump(mode="json"),
+    }

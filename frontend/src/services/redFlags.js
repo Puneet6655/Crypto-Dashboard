@@ -11,7 +11,7 @@ export function requestRedFlags(address, { signal } = {}) {
 export const SEVERITY_LABEL = { info: "Info", low: "Low", medium: "Medium", high: "High", critical: "Critical" };
 
 // Put the red flags into an investigation result: their findings, indicators and evidence (ids start with "rf")
-// join the Findings, Evidence and indicator lists, so exports and the Explanation tab can cite them.
+// join the Findings, Evidence and indicator lists, so exports and the AI Analyst can cite them.
 export function withRedFlags(result, report) {
   const notRf = (item) => !String(item.id).startsWith("rf");
   return {

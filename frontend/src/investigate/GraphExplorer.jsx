@@ -1,17 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Graph from "graphology";
-import PageHeader from "../components/PageHeader.jsx";
 import SigmaGraph, { focusNode } from "../components/SigmaGraph.jsx";
 import { streamGraphExpand } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { navigate } from "../hooks/useHashRoute.js";
 import HoldingsPanel from "../components/HoldingsPanel.jsx";
 import { W3FlowOverlay, W3GraphFilters, W3GraphSearch, W3NodeMenu, minValueAt } from "../w3/W3GraphTools.jsx";
+import W3TimeSlider from "../w3/W3TimeSlider.jsx";
+import { nodesOutOfTime } from "../w3/timeFilter.js";
 
-// Advanced graph mode: grow a graph of thousands of addresses step by step.
+// The graph explorer on the Investigate page (the dashboard's only graph): grow a graph of thousands of
+// addresses step by step around the investigation.
 // Load 1 or 2 hops around an address, then double-click any node to expand it. Busy addresses
 // (hubs), dust and long tails are grouped into summary nodes; click one to open it.
 // The backend streams each fetched address as soon as it is ready (see app/graph/expand.py).
+// It starts from the investigation's own graph (every lookup type), expands the looked-up address once,
+// and stores every expansion in the investigation result (useInvestigation.mergeExplorerBatch), so the
+// evidence tab and the AI analyst see what was found. The result is the record; this graph is the view.
 
 const CHAINS = [
   { id: "bitcoin", label: "Bitcoin", unit: "BTC", placeholder: "bc1q... or 1... or 3..." },
@@ -33,9 +37,12 @@ export const KIND_STYLE = {
   listed: { label: "On a sanctions or scam list", color: "#dc2626" },
   dust: { label: "Dust and zero-value group", color: "#9ca3af" },
   more: { label: "More counterparties (group)", color: "#d97706" },
+  transaction: { label: "Transaction", color: "#8b5cf6" },
+  other: { label: "Website, service or payment", color: "#64748b" },
 };
 
 function styleKey(attrs) {
+  if (attrs.kind === "transaction" || attrs.kind === "other") return attrs.kind;
   if (attrs.listed?.length) return "listed";
   if (attrs.kind === "dust" || attrs.kind === "more") return attrs.kind;
   if (attrs.kind === "exchange") return "exchange";
@@ -45,6 +52,8 @@ function styleKey(attrs) {
 }
 
 function nodeSize(attrs) {
+  if (attrs.kind === "transaction") return 5;
+  if (attrs.kind === "other") return 7;
   if (attrs.kind === "dust" || attrs.kind === "more") return 4 + Math.min(8, Math.log2(1 + (attrs.count ?? 1)));
   if (attrs.kind === "hub" || attrs.kind === "exchange") return attrs.expanded || attrs.kind === "hub" ? 12 : 8;
   if (attrs.seed) return 11;
@@ -52,7 +61,7 @@ function nodeSize(attrs) {
 }
 
 // Apply our attributes plus what Sigma draws with (color, size, label, position).
-function drawAttrs(attrs) {
+function drawAttrs({ type, ...attrs }) { // eslint-disable-line no-unused-vars
   const key = styleKey(attrs);
   return { ...attrs, color: KIND_STYLE[key].color, size: nodeSize(attrs), styleKey: key };
 }
@@ -104,47 +113,109 @@ function formatAmount(value, unit) {
   return `${Number(value).toLocaleString(undefined, { maximumFractionDigits: digits })} ${unit}`;
 }
 
-export default function GraphExplorerPage({ route }) {
+
+const ADDRESS_ID = /^([a-z0-9]+):([^:]+):address:(.+)$/;
+const AMOUNT = /([\d,]*\.?\d+)\s*(BTC|ETH|SOL)\b/;
+
+// An investigation node as explorer attributes. Addresses on the four chains can be expanded.
+function fromResultNode(node, subjectId) {
+  const m = ADDRESS_ID.exec(node.id);
+  const listed = node.details?.listed_in ?? node.details?.listed_on ?? [];
+  if (node.type === "address" && m) {
+    return { id: node.id, kind: "address", chain: m[1], address: m[3], label: node.label, listed,
+      expanded: Boolean(node.details?.expanded), seed: node.id === subjectId, details: node.details ?? {} };
+  }
+  if (node.type === "transaction") {
+    return { id: node.id, kind: "transaction", label: node.label, listed, details: node.details ?? {} };
+  }
+  // Not "type": Sigma reads that attribute as the name of its drawing program and stops rendering on an unknown one.
+  return { id: node.id, kind: "other", label: node.label, listed, resultType: node.type, details: node.details ?? {} };
+}
+
+// An investigation edge as explorer attributes: amount (for the amount slider) and time (for the timeline).
+function fromResultEdge(edge, nodeById) {
+  const parsed = AMOUNT.exec(edge.label ?? "");
+  const value = edge.value ?? (parsed ? Number(parsed[1].replace(/,/g, "")) : 0);
+  const unit = edge.unit ?? parsed?.[2] ?? "";
+  const tx = [edge.source, edge.target].map((id) => nodeById.get(id)).find((n) => n?.type === "transaction");
+  const when = tx?.details?.block_time ?? null;
+  return { id: edge.id, source: edge.source, target: edge.target, value, unit, tx_count: edge.tx_count ?? 1,
+    tokens: "", label: edge.label, first_time: edge.first_time ?? when, last_time: edge.last_time ?? when };
+}
+
+// Copy into the explorer graph whatever the investigation has that the graph does not (the first time:
+// everything; later: older transactions, "Expand node" from the details panel). Returns true if it changed.
+function syncFromResult(graph, result, subjectId, removed) {
+  let changed = false;
+  for (const node of result.graph.nodes) {
+    if (graph.hasNode(node.id) || removed.has(node.id)) continue;
+    upsertNode(graph, fromResultNode(node, subjectId), null);
+    changed = true;
+  }
+  const nodeById = new Map(result.graph.nodes.map((n) => [n.id, n]));
+  for (const edge of result.graph.edges) {
+    if (graph.hasEdge(edge.id) || graph.hasDirectedEdge(edge.source, edge.target)) continue;
+    upsertEdge(graph, fromResultEdge(edge, nodeById));
+    changed = true;
+  }
+  return changed;
+}
+
+function subjectOf(result) {
+  const { type, value } = result.input ?? {};
+  const chain = CHAINS.find((c) => type === `${c.id}_address`)?.id;
+  if (!chain || !value) return null;
+  const node = result.graph.nodes.find((n) => n.type === "address" && n.id.startsWith(`${chain}:`)
+    && n.id.toLowerCase().endsWith(`:address:${value.toLowerCase()}`));
+  return { chain, address: node ? ADDRESS_ID.exec(node.id)[3] : value, id: node?.id ?? null };
+}
+
+export default function GraphExplorer({ inv, onNodePick }) {
+  const { result } = inv;
+  const live = result.data_mode === "live";
   const status = useApi("/api/graph/status");
-  const [chain, setChain] = useState(() => (CHAINS.some((c) => c.id === route.params[0]) ? route.params[0] : "bitcoin"));
-  const [address, setAddress] = useState(() => decodeURIComponent(route.params[1] ?? ""));
-  const [hops, setHops] = useState(1);
+  const subject = useMemo(() => subjectOf(result), [result.investigation_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const mainChain = subject?.chain ?? (result.graph.nodes.map((n) => ADDRESS_ID.exec(n.id)?.[1]).find((c) => CHAINS.some((x) => x.id === c)) ?? "bitcoin");
   const [cap, setCap] = useState(DEFAULT_CAP);
   const [perNode, setPerNode] = useState(40);
 
-  // One graphology graph per exploration. A new object = a fresh canvas.
-  const [graph, setGraph] = useState(() => new Graph({ type: "directed" }));
-  const [graphChain, setGraphChain] = useState(chain);
+  // One graphology graph per investigation (this component is keyed by it), filled from the result first.
+  const [graph] = useState(() => {
+    const g = new Graph({ type: "directed" });
+    syncFromResult(g, result, subject?.id, new Set());
+    return g;
+  });
   const sigmaRef = useRef(null);
-  // Callbacks read the graph from here, so a request still streaming into a just-created graph
-  // counts that graph and not the one from the previous render.
-  const graphRef = useRef(graph);
-  graphRef.current = graph;
-  const [counts, setCounts] = useState({ nodes: 0, edges: 0 });
-  const [selectedId, setSelectedId] = useState("");
+  const [counts, setCounts] = useState({ nodes: graph.order, edges: graph.size });
+  const [selectedId, setSelectedId] = useState(subject?.id ?? "");
   const [selectedVersion, setSelectedVersion] = useState(0);
-  const [holdingsFor, setHoldingsFor] = useState(""); // Web3: node whose live holdings were asked for
+  const [holdingsFor, setHoldingsFor] = useState("");
   const [running, setRunning] = useState(null); // { label, done, total } while a request streams
   const [messages, setMessages] = useState([]);
   const [lastRun, setLastRun] = useState(null);
-  const [layoutOn, setLayoutOn] = useState(false);
+  const [layoutOn, setLayoutOn] = useState(true);
   const [layoutPinned, setLayoutPinned] = useState(false); // the analyst paused it
   const abortRef = useRef(null);
+  const removedIds = useRef(new Set()); // opened groups: kept in the result, never drawn again
   const layoutTimer = useRef(null);
   const countFrame = useRef(0);
-  // Extras: filters, hidden nodes, right-click menu, money-flow particles.
+  // Filters, hidden nodes, right-click menu, money-flow particles.
   const [hiddenKinds, setHiddenKinds] = useState(() => new Set());
   const [hiddenNodes, setHiddenNodes] = useState(() => new Set());
   const [minIndex, setMinIndex] = useState(0);
   const [menu, setMenu] = useState(null); // { node, x, y }
   const [flowOn, setFlowOn] = useState(true);
+  // Timeline slider: only links that moved money in this period (null = all time).
+  const [timeRange, setTimeRange] = useState(null);
+  const deferredRange = useDeferredValue(timeRange);
+  const timeHidden = useMemo(() => nodesOutOfTime(graph, deferredRange), [graph, deferredRange, counts]); // eslint-disable-line react-hooks/exhaustive-deps
   const view = useMemo(() => ({
-    hiddenKinds, hiddenNodes, minValue: minValueAt(minIndex),
+    hiddenKinds, hiddenNodes, minValue: minValueAt(minIndex), timeRange: deferredRange, timeHidden,
     onContext: (node, x, y) => { setSelectedId(node); setMenu({ node, x, y }); },
-  }), [hiddenKinds, hiddenNodes, minIndex]);
+  }), [hiddenKinds, hiddenNodes, minIndex, deferredRange, timeHidden]);
 
   const maxCap = status.data?.max_nodes ?? 20000;
-  const unit = CHAINS.find((c) => c.id === graphChain)?.unit ?? "";
+  const unit = CHAINS.find((c) => c.id === mainChain)?.unit ?? "";
   const nearCap = counts.nodes >= cap * WARN_AT;
   const atCap = counts.nodes >= cap;
 
@@ -153,50 +224,72 @@ export default function GraphExplorerPage({ route }) {
     if (countFrame.current) return;
     countFrame.current = requestAnimationFrame(() => {
       countFrame.current = 0;
-      setCounts({ nodes: graphRef.current.order, edges: graphRef.current.size });
+      setCounts({ nodes: graph.order, edges: graph.size });
       setSelectedVersion((v) => v + 1);
     });
-  }, []);
+  }, [graph]);
 
   // Run the layout for a few seconds after each change, unless the analyst paused it.
   const nudgeLayout = useCallback(() => {
     if (layoutPinned) return;
     setLayoutOn(true);
     clearTimeout(layoutTimer.current);
-    const seconds = LAYOUT_SECONDS + Math.min(10, graphRef.current.order / 1000);
+    const seconds = LAYOUT_SECONDS + Math.min(10, graph.order / 1000);
     layoutTimer.current = setTimeout(() => setLayoutOn(false), seconds * 1000);
-  }, [layoutPinned]);
-  useEffect(() => () => clearTimeout(layoutTimer.current), []);
+  }, [layoutPinned, graph]);
+  useEffect(() => {
+    layoutTimer.current = setTimeout(() => setLayoutOn(false), LAYOUT_SECONDS * 1000);
+    return () => {
+      clearTimeout(layoutTimer.current);
+      if (abortRef.current) { abortRef.current.quiet = true; abortRef.current.abort(); }
+    };
+  }, []);
+
+  // Investigate tells Investigate which node is selected (its risk and details panels follow).
+  useEffect(() => { onNodePick?.(selectedId); }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The investigation grew from elsewhere (older transactions, "Expand node" in the details): show it here too.
+  useEffect(() => {
+    if (syncFromResult(graph, result, subject?.id, removedIds.current)) { recount(); nudgeLayout(); }
+  }, [result.graph]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const note = (kind, text) => setMessages((old) => [{ kind, text, at: Date.now() }, ...old].slice(0, 6));
 
-  // Stream one expand request into the graph.
-  const expand = useCallback(async (targets, hopCount, label, onGraph = graph, onChain = graphChain) => {
-    const room = cap - onGraph.order;
-    if (room <= 0) {
-      note("warn", `The graph is at its ${cap.toLocaleString()}-node cap. Raise the cap or clear the graph first.`);
+  // Stream one expand request into the graph, and into the investigation result.
+  const expand = useCallback(async (targets, hopCount, label, chain = mainChain) => {
+    if (!live) {
+      note("info", "Demo results cannot be expanded. Look up a real address to grow the graph.");
       return;
     }
-    abortRef.current?.abort();
+    const room = cap - graph.order;
+    if (room <= 0) {
+      note("warn", `The graph is at its ${cap.toLocaleString()}-node cap. Raise the cap first.`);
+      return;
+    }
+    if (abortRef.current) { abortRef.current.quiet = true; abortRef.current.abort(); } // the new request replaces it
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning({ label, done: 0, total: targets.length });
     let summary = null;
     try {
       await streamGraphExpand(
-        { chain: onChain, addresses: targets, hops: hopCount, max_new_nodes: room, per_node_limit: perNode },
+        { chain, addresses: targets, hops: hopCount, max_new_nodes: room, per_node_limit: perNode },
         {
           signal: controller.signal,
           onEvent: (event) => {
             if (event.event === "progress") setRunning((r) => r && { ...r, label: `${label}: hop ${event.hop}`, done: 0, total: event.fetching });
             if (event.event === "batch") {
               const center = event.expanded;
-              upsertNode(onGraph, center, null);
+              upsertNode(graph, center, null);
               for (const node of event.nodes) {
-                if (onGraph.order >= cap && !onGraph.hasNode(node.id)) break; // hard stop at the cap
-                upsertNode(onGraph, node, node.parent ?? center.id);
+                if (graph.order >= cap && !graph.hasNode(node.id)) break; // hard stop at the cap
+                upsertNode(graph, node, node.parent ?? center.id);
               }
-              for (const edge of event.edges) upsertEdge(onGraph, edge);
+              for (const edge of event.edges) upsertEdge(graph, edge);
+              // Store only what the graph really shows (the cap may have cut the batch short).
+              const nodes = event.nodes.filter((n) => graph.hasNode(n.id));
+              const edges = event.edges.filter((e) => graph.hasNode(e.source) && graph.hasNode(e.target));
+              inv.mergeExplorerBatch({ ...event, nodes, edges }, chain, result.investigation_id);
               setRunning((r) => r && { ...r, done: event.progress.done, total: event.progress.total });
               recount();
               nudgeLayout();
@@ -209,57 +302,51 @@ export default function GraphExplorerPage({ route }) {
       );
       if (summary) {
         setLastRun(summary);
-        if (summary.stopped === "node_limit") note("warn", `Stopped at the ${cap.toLocaleString()}-node cap.`);
+        if (summary.stopped === "node_limit") {
+          note("warn", `Stopped at the ${cap.toLocaleString()}-node cap.`);
+          inv.addLimitation(`The graph explorer stopped at its ${cap.toLocaleString()}-node cap; some counterparties were not added.`);
+        }
+        if (summary.stopped === "fetch_cap") inv.addLimitation("The graph explorer read the most addresses one request allows; further hops were not loaded.");
+        if (summary.stopped === "budget") inv.addLimitation("The graph explorer stopped at the daily Alchemy allowance.");
       }
     } catch (err) {
       if (err.name !== "AbortError") note("error", err.message);
-      else note("info", "Stopped.");
+      else if (!controller.quiet) note("info", "Stopped.");
     } finally {
+      inv.flushExplorer();
       if (abortRef.current === controller) {
         abortRef.current = null;
         setRunning(null);
       }
       status.reload();
     }
-  }, [cap, graph, graphChain, perNode, recount, nudgeLayout, status]);
+  }, [cap, graph, mainChain, perNode, recount, nudgeLayout, status, live, inv, result.investigation_id]);
 
-  // Start a new exploration from the address in the form.
-  function load(event) {
-    event?.preventDefault();
-    const value = address.trim();
-    if (!value) return;
-    // Several addresses (comma or space separated) start one graph together, e.g. a case's addresses.
-    const starts = value.split(/[\s,]+/).filter(Boolean);
-    abortRef.current?.abort();
-    const fresh = new Graph({ type: "directed" });
-    graphRef.current = fresh;
-    setGraph(fresh);
-    setGraphChain(chain);
-    setSelectedId("");
-    setMessages([]);
-    setLastRun(null);
-    setCounts({ nodes: 0, edges: 0 });
-    // Remember the start in the address bar, so a reload or a shared link opens the same graph.
-    navigate(`/graph/${chain}/${encodeURIComponent(value)}`);
-    setHiddenNodes(new Set()); setMenu(null);
-    expand(starts, hops, `Loading ${hops} hop${hops > 1 ? "s" : ""}${starts.length > 1 ? ` around ${starts.length} addresses` : ""}`, fresh, chain).then(() => {
-      const wanted = new Set(starts.map((v) => v.toLowerCase()));
-      const seedIds = [...fresh.nodes()].filter((id) => wanted.has(fresh.getNodeAttribute(id, "address")?.toLowerCase()));
-      for (const seedId of seedIds) {
-        fresh.mergeNodeAttributes(seedId, { seed: true });
-        fresh.replaceNodeAttributes(seedId, drawAttrs(fresh.getNodeAttributes(seedId)));
-      }
-      if (seedIds.length === 1) setSelectedId(seedIds[0]);
-      if (seedIds.length) recount();
-    });
-  }
-
-  // Open a link like #/graph/bitcoin/<address> straight away (once).
+  // First visit of this investigation: expand the looked-up address (and any extra start addresses) one hop.
   const autoLoaded = useRef(false);
   useEffect(() => {
-    if (autoLoaded.current || !route.params[1]) return;
+    if (autoLoaded.current || !live || !subject) return;
     autoLoaded.current = true;
-    load();
+    const already = result.graph.edges.some((e) => e.id.startsWith("expand:"));
+    const extras = inv.explorerExtras?.first?.toLowerCase() === subject.address.toLowerCase() && inv.explorerExtras.chain === subject.chain
+      ? inv.explorerExtras.addresses : [];
+    if (already && !extras.length) return;
+    const starts = [subject.address, ...extras];
+    for (const a of extras) {
+      const id = `${subject.chain}:mainnet:address:${a}`;
+      if (graph.hasNode(id)) graph.mergeNodeAttributes(id, { seed: true });
+    }
+    let cancelled = false;
+    expand(starts, 1, `Loading counterparties${starts.length > 1 ? ` of ${starts.length} addresses` : ""}`, subject.chain).then(() => {
+      if (cancelled) return;
+      for (const a of starts) {
+        const id = [...graph.nodes()].find((n) => graph.getNodeAttribute(n, "address")?.toLowerCase() === a.toLowerCase());
+        if (id) { graph.mergeNodeAttributes(id, { seed: true }); graph.replaceNodeAttributes(id, drawAttrs(graph.getNodeAttributes(id))); }
+      }
+      recount();
+    });
+    // React's development mode mounts twice: the first request is stopped quietly and this runs again.
+    return () => { cancelled = true; autoLoaded.current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -267,14 +354,15 @@ export default function GraphExplorerPage({ route }) {
     if (!graph.hasNode(id)) return;
     const attrs = graph.getNodeAttributes(id);
     if (attrs.kind === "dust" || attrs.kind === "more") return unpack(id);
-    if (!attrs.address) return;
-    expand([attrs.address], hopCount, `Expanding ${attrs.label}`);
+    if (!attrs.address || !CHAINS.some((c) => c.id === attrs.chain)) return;
+    expand([attrs.address], hopCount, `Expanding ${attrs.label}`, attrs.chain);
   }
 
-  // Expand every address that has not been expanded yet (hubs and groups excepted).
+  // Expand every address of the main chain not expanded yet (hubs and groups excepted).
   function expandFrontier() {
-    const frontier = graph.filterNodes((_, a) => a.kind === "address" && !a.expanded && !a.listed?.length);
-    const listed = graph.filterNodes((_, a) => a.kind === "address" && !a.expanded && a.listed?.length);
+    const open = (a) => a.kind === "address" && a.chain === mainChain && !a.expanded;
+    const listed = graph.filterNodes((_, a) => open(a) && a.listed?.length);
+    const frontier = graph.filterNodes((_, a) => open(a) && !a.listed?.length);
     const targets = [...listed, ...frontier].slice(0, 100).map((id) => graph.getNodeAttribute(id, "address"));
     if (!targets.length) {
       note("info", "Every address in the graph is already expanded.");
@@ -283,22 +371,38 @@ export default function GraphExplorerPage({ route }) {
     expand(targets, 1, `Expanding ${targets.length} addresses`);
   }
 
-  // Open a summary node: its members become ordinary nodes, UNPACK_STEP at a time. No API call.
+  // Open a summary node: its members become ordinary nodes, UNPACK_STEP at a time. No API call,
+  // but they are stored in the investigation like any expansion.
   function unpack(id) {
     const s = graph.getNodeAttributes(id);
     const room = cap - graph.order + 1;
-    const take = s.members.slice(0, Math.min(UNPACK_STEP, room));
+    const take = (s.members ?? []).slice(0, Math.min(UNPACK_STEP, room));
     if (!take.length) {
-      note("warn", `The graph is at its ${cap.toLocaleString()}-node cap.`);
+      note("warn", s.members ? `The graph is at its ${cap.toLocaleString()}-node cap.` : "This group's members are not loaded any more. Expand its address again to open it.");
       return;
     }
+    const chain = s.chain ?? mainChain;
+    const groupUnit = CHAINS.find((c) => c.id === chain)?.unit ?? unit;
+    const batchNodes = [];
+    const batchEdges = [];
     for (const m of take) {
-      const mid = `${graphChain}:mainnet:address:${m.address}`;
-      upsertNode(graph, { id: mid, kind: "address", chain: graphChain, address: m.address,
-        label: `${m.address.slice(0, 6)}...${m.address.slice(-6)}`, expanded: false, listed: [] }, id);
+      const mid = `${chain}:mainnet:address:${m.address}`;
+      const node = { id: mid, kind: "address", chain, address: m.address,
+        label: `${m.address.slice(0, 6)}...${m.address.slice(-6)}`, expanded: false, listed: [] };
+      upsertNode(graph, node, id);
+      batchNodes.push(node);
       const tokens = Object.entries(m.tokens ?? {}).map(([k, n]) => `${k} x${n}`).join(", ");
-      if (m.sent) upsertEdge(graph, { id: `${s.parent}>${mid}`, source: s.parent, target: mid, value: m.sent, tx_count: m.tx_count, unit, tokens });
-      if (m.received || !m.sent) upsertEdge(graph, { id: `${mid}>${s.parent}`, source: mid, target: s.parent, value: m.received, tx_count: m.tx_count, unit, tokens });
+      const times = { first_time: m.first_time ?? null, last_time: m.last_time ?? null };
+      const edges = [];
+      if (m.sent) edges.push({ id: `${s.parent}>${mid}`, source: s.parent, target: mid, value: m.sent, tx_count: m.tx_count, unit: groupUnit, tokens, ...times });
+      if (m.received || !m.sent) edges.push({ id: `${mid}>${s.parent}`, source: mid, target: s.parent, value: m.received, tx_count: m.tx_count, unit: groupUnit, tokens, ...times });
+      for (const e of edges) { upsertEdge(graph, e); batchEdges.push(e); }
+    }
+    if (live && graph.hasNode(s.parent)) {
+      const p = graph.getNodeAttributes(s.parent);
+      inv.mergeExplorerBatch({ expanded: { id: s.parent, address: p.address, label: p.label, counterparties: p.counterparties ?? take.length,
+        tx_seen: p.tx_seen ?? 0, source: p.source ?? "opened group", note: `Opened ${take.length} from the ${s.kind === "dust" ? "dust" : "more"} group` },
+        nodes: batchNodes, edges: batchEdges }, chain, result.investigation_id);
     }
     const rest = s.members.slice(take.length);
     if (rest.length) {
@@ -306,6 +410,7 @@ export default function GraphExplorerPage({ route }) {
         label: `${(s.count - take.length).toLocaleString()} ${s.kind === "dust" ? "dust or zero-value" : "more"}` }));
     } else {
       graph.dropNode(id);
+      removedIds.current.add(id);
       setSelectedId(s.parent);
     }
     recount();
@@ -316,22 +421,11 @@ export default function GraphExplorerPage({ route }) {
     abortRef.current?.abort();
   }
 
-  function clear() {
-    stop();
-    const fresh = new Graph({ type: "directed" });
-    graphRef.current = fresh;
-    setGraph(fresh);
-    setSelectedId("");
-    setCounts({ nodes: 0, edges: 0 });
-    setMessages([]);
-    setLastRun(null);
-  }
-
   function downloadJson() {
     const blob = new Blob([JSON.stringify(graph.export())], { type: "application/json" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `graph-${graphChain}-${new Date().toISOString().slice(0, 19).replace(/:/g, "")}.json`;
+    link.download = `${result.investigation_id}-graph.json`;
     link.click();
     URL.revokeObjectURL(link.href);
   }
@@ -344,102 +438,58 @@ export default function GraphExplorerPage({ route }) {
   }, [graph, counts]);
 
   const budget = status.data;
-  const chainOff = status.data && status.data.chains?.[chain] === false;
+  const shown = result.uncertainty?.transactions_shown;
+  const total = result.uncertainty?.transactions_total;
 
   return (
-    <>
-      <PageHeader
-        icon="graph"
-        title="Graph explorer"
-        subtitle="Advanced graph mode: grow a graph of thousands of addresses. Load 1 or 2 hops, then double-click a node to expand it."
-      >
+    <section className="card inv-explorer" aria-label="Graph explorer">
+      <div className="inv-explorer-form">
+        <div className="graph-header grow">
+          <h2>
+            Graph explorer: {counts.nodes.toLocaleString()} nodes, {counts.edges.toLocaleString()} links
+            <span className="small muted"> · cap {cap.toLocaleString()}</span>
+          </h2>
+          {atCap ? <span className="pill pill-down">Node cap reached</span>
+            : nearCap ? <span className="pill pill-warn">Near the node cap ({Math.round((counts.nodes / cap) * 100)}%)</span> : null}
+        </div>
+        <label className="field">
+          <span className="field-label" title="Counterparties drawn per address before the rest are grouped">Per address: {perNode}</span>
+          <input type="range" min={10} max={200} step={10} value={perNode} onChange={(e) => setPerNode(Number(e.target.value))} />
+        </label>
+        <label className="field">
+          <span className="field-label">Node cap</span>
+          <input type="number" min={100} max={maxCap} step={500} value={cap} className="inv-cap-input"
+            onChange={(e) => setCap(Math.max(100, Math.min(maxCap, Number(e.target.value) || DEFAULT_CAP)))} />
+        </label>
         {budget && (
           <span className="data-badge" title="Graph mode's own daily share of the Alchemy free plan. Bitcoin and Etherscan lookups do not use it.">
             Alchemy today: {budget.alchemy_cu_used_today.toLocaleString()} / {budget.alchemy_cu_daily_limit.toLocaleString()} CU
           </span>
         )}
-      </PageHeader>
+      </div>
+      {counts.nodes > 0 && (
+        <div className="cap-meter" aria-hidden="true">
+          <span style={{ width: `${Math.min(100, (counts.nodes / cap) * 100)}%` }} className={atCap ? "full-bar" : nearCap ? "warn-bar" : ""} />
+        </div>
+      )}
 
-      <div className="explorer-layout">
-        <form className="card controls" onSubmit={load} aria-label="Start a graph">
-          <label className="field">
-            <span className="field-label">Chain</span>
-            <select value={chain} onChange={(e) => setChain(e.target.value)}>
-              {CHAINS.map((c) => (
-                <option key={c.id} value={c.id} disabled={status.data?.chains?.[c.id] === false}>
-                  {c.label}{status.data?.chains?.[c.id] === false ? " (not set up)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span className="field-label">Starting address (or several, comma separated)</span>
-            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={CHAINS.find((c) => c.id === chain)?.placeholder} spellCheck={false} />
-          </label>
-          <div className="field-row">
-            <label className="field">
-              <span className="field-label">Hops to load</span>
-              <select value={hops} onChange={(e) => setHops(Number(e.target.value))}>
-                <option value={1}>1 hop</option>
-                <option value={2}>2 hops</option>
-              </select>
-            </label>
-            <label className="field">
-              <span className="field-label">Node cap</span>
-              <input type="number" min={100} max={maxCap} step={500} value={cap}
-                onChange={(e) => setCap(Math.max(100, Math.min(maxCap, Number(e.target.value) || DEFAULT_CAP)))} />
-            </label>
-          </div>
-          <label className="field">
-            <span className="field-label" title="Counterparties drawn per address before the rest are grouped">Shown per address: {perNode}</span>
-            <input type="range" min={10} max={200} step={10} value={perNode} onChange={(e) => setPerNode(Number(e.target.value))} />
-          </label>
-          {chainOff && <p className="small error-text">This chain is not set up on the backend (missing API key).</p>}
-          <div className="form-actions">
-            {running ? (
-              <button type="button" className="secondary" onClick={stop}>Stop</button>
-            ) : (
-              <button type="submit" className="primary" disabled={!address.trim() || chainOff}>Load graph</button>
-            )}
-          </div>
-          <p className="small muted">
-            {chain === "bitcoin" && "Bitcoin comes from mempool.space (blockstream.info as backup): free, at most 60 addresses per request."}
-            {chain === "ethereum" && "Ethereum comes from Etherscan first (free key); Blockscout and Alchemy are the backups. At most 40 addresses per request."}
-            {chain === "base" && "Base comes from Alchemy only: about 480 compute units per address, at most 15 per request."}
-            {chain === "solana" && "Solana comes from Alchemy only: about 640 compute units per address, at most 8 per request."}
-          </p>
-        </form>
-
-        <section className="card explorer-main" aria-label="Graph">
-          <div className="graph-header">
-            <h2>
-              {counts.nodes.toLocaleString()} nodes, {counts.edges.toLocaleString()} links
-              <span className="small muted"> · cap {cap.toLocaleString()}</span>
-            </h2>
-            {atCap ? (
-              <span className="pill pill-down">Node cap reached</span>
-            ) : nearCap ? (
-              <span className="pill pill-warn">Near the node cap ({Math.round((counts.nodes / cap) * 100)}%)</span>
-            ) : null}
-          </div>
-          {counts.nodes > 0 && (
-            <div className="cap-meter" aria-hidden="true">
-              <span style={{ width: `${Math.min(100, (counts.nodes / cap) * 100)}%` }} className={atCap ? "full-bar" : nearCap ? "warn-bar" : ""} />
-            </div>
-          )}
-
+      <div className="inv-explorer-body">
+        <div className="explorer-main" aria-label="Graph">
           <div className="graph-toolbar">
             <W3GraphSearch graph={graph} version={counts.nodes} onPick={(id) => { setSelectedId(id); focusNode(sigmaRef.current, id); }} />
             <div className="button-group">
-              <button type="button" className="secondary" onClick={expandFrontier} disabled={!counts.nodes || Boolean(running) || atCap}
-                title="Expand every address not expanded yet (up to the per-request limit)">Expand all</button>
+              {running ? (
+                <button type="button" className="secondary" onClick={stop}>Stop</button>
+              ) : (
+                <button type="button" className="secondary" onClick={expandFrontier} disabled={!live || !counts.nodes || atCap}
+                  title="Expand every address not expanded yet (up to the per-request limit)">Expand all</button>
+              )}
               <button type="button" className="secondary" onClick={() => sigmaRef.current?.getCamera().animatedReset()} disabled={!counts.nodes}>Fit</button>
               <button type="button" className="secondary" onClick={() => { setLayoutPinned(layoutOn); setLayoutOn(!layoutOn); }} disabled={!counts.nodes}
                 title="ForceAtlas2 runs in a background thread">{layoutOn ? "Pause layout" : "Run layout"}</button>
               <button type="button" className={`secondary ${flowOn ? "w3-on" : ""}`} onClick={() => setFlowOn((f) => !f)} disabled={!counts.nodes}
                 aria-pressed={flowOn} title="Moving dots show which way money flows along each link">Money flow</button>
               <button type="button" className="secondary" onClick={downloadJson} disabled={!counts.nodes} title="Download the graph (graphology JSON)">JSON</button>
-              <button type="button" className="secondary" onClick={clear} disabled={!counts.nodes}>Clear</button>
             </div>
           </div>
 
@@ -454,39 +504,57 @@ export default function GraphExplorerPage({ route }) {
           ))}
 
           <div className="sigma-wrap">
-            {counts.nodes === 0 && !running && (
-              <div className="sigma-empty muted">Enter an address and press Load graph.</div>
-            )}
             <SigmaGraph graph={graph} selectedId={selectedId} onSelect={setSelectedId}
               onExpand={(id) => expandNode(id)} layoutOn={layoutOn} sigmaRef={sigmaRef} view={view} />
             <W3FlowOverlay sigmaRef={sigmaRef} graph={graph} focusId={selectedId} view={view} on={flowOn && counts.nodes > 0} />
           </div>
-          <W3NodeMenu menu={menu} graph={graph} chain={graphChain} onClose={() => setMenu(null)}
+          <W3NodeMenu menu={menu} graph={graph} chain={graph.hasNode(menu?.node ?? "") ? graph.getNodeAttribute(menu.node, "chain") ?? mainChain : mainChain}
+            onClose={() => setMenu(null)}
             onExpand={expandNode}
             onSelectFocus={(id) => { setSelectedId(id); focusNode(sigmaRef.current, id); }}
             onHide={(id) => { setHiddenNodes((old) => new Set(old).add(id)); if (selectedId === id) setSelectedId(""); }}
             onTogglePin={(id) => { graph.setNodeAttribute(id, "fixed", !graph.getNodeAttribute(id, "fixed")); recount(); }} />
 
+          <W3TimeSlider graph={graph} version={counts.edges} range={timeRange} onRange={setTimeRange} />
           <W3GraphFilters kinds={KIND_STYLE} counts={kindCounts} hiddenKinds={hiddenKinds} unit={unit}
             onToggleKind={(key) => setHiddenKinds((old) => { const next = new Set(old); next.has(key) ? next.delete(key) : next.add(key); return next; })}
             minIndex={minIndex} onMinIndex={setMinIndex} hiddenNodes={hiddenNodes} onShowHidden={() => setHiddenNodes(new Set())} />
+          {inv.canLoadOlder || inv.older ? (
+            <div className="inv-older">
+              {inv.canLoadOlder && (
+                <button type="button" className="secondary" onClick={inv.loadOlder} disabled={inv.older?.status === "loading"}
+                  title={{ bitcoin: "Read the next 100 transactions of the looked-up address (4 pages of 25)",
+                    solana: "Read the next older Solana transactions in full (Alchemy compute units per transaction)" }[mainChain]
+                    ?? "Read the activity older than the oldest block in the graph (Etherscan, or Alchemy as backup)"}>
+                  {inv.older?.status === "loading" ? "Loading older transactions..." : "Load older transactions"}
+                </button>
+              )}
+              <span className="small muted">
+                {shown != null && total != null ? `${shown.toLocaleString()} of ${total.toLocaleString()} transactions loaded. `
+                  : result.uncertainty?.older_transactions_loaded ? `${result.uncertainty.older_transactions_loaded.toLocaleString()} older transactions loaded. ` : ""}
+                {inv.older?.text ?? ""}
+              </span>
+            </div>
+          ) : null}
           <p className="small muted hint">
-            Scroll to zoom, drag to pan. Click a node for details, double-click to expand it (or open a group).
-             Hover a node to light up its links, right-click it for more actions.
+            Scroll to zoom, drag to pan. Click a node for details, double-click an address to expand it (or open a group).
+            Hover a node to light up its links, right-click it for more actions. Everything you expand is saved with this
+            investigation, so the evidence tab and the AI analyst see it.
             {lastRun && ` Last request: ${lastRun.fetched} fetched, ${lastRun.from_cache} from cache, ${lastRun.seconds} s` +
               (lastRun.alchemy_cu ? `, ${lastRun.alchemy_cu.toLocaleString()} Alchemy CU.` : ".")}
           </p>
-        </section>
+        </div>
 
-        <NodeDetails key={selectedId + selectedVersion} graph={graph} id={selectedId} unit={unit} running={Boolean(running)} atCap={atCap} labelCount={status.data?.exchange_labels?.addresses ?? 0}
+        <NodeDetails key={selectedId + selectedVersion} graph={graph} id={selectedId} unit={unit} running={Boolean(running) || !live} atCap={atCap}
+          labelCount={status.data?.exchange_labels?.addresses ?? 0}
           onExpand={expandNode} onSelect={(id) => { setSelectedId(id); focusNode(sigmaRef.current, id); }}
-          chain={graphChain} holdingsOpen={holdingsFor === selectedId} onHoldings={() => setHoldingsFor(selectedId)} />
+          chain={graph.hasNode(selectedId) ? graph.getNodeAttribute(selectedId, "chain") ?? mainChain : mainChain}
+          holdingsOpen={holdingsFor === selectedId} onHoldings={() => setHoldingsFor(selectedId)} />
       </div>
-    </>
+    </section>
   );
 }
 
-// Holdings node id in the form HoldingsPanel expects (EVM hex lower case). Bitcoin has no holdings view.
 function holdingsNodeId(chain, address) {
   if (!address) return "";
   if (chain === "ethereum" || chain === "base") return /^0x[0-9a-fA-F]{40}$/.test(address) ? `${chain}:mainnet:address:${address.toLowerCase()}` : "";
@@ -510,6 +578,7 @@ function NodeDetails({ graph, id, unit, running, atCap, onExpand, onSelect, labe
     );
   }
   const a = graph.getNodeAttributes(id);
+  if (a.kind === "transaction" || a.kind === "other" || !a.address) return <PlainDetails a={a} degree={graph.degree(id)} />;
   const isGroup = a.kind === "dust" || a.kind === "more";
   const inEdges = graph.inEdges(id).map((e) => graph.getEdgeAttributes(e));
   const outEdges = graph.outEdges(id).map((e) => graph.getEdgeAttributes(e));
@@ -577,6 +646,23 @@ function NodeDetails({ graph, id, unit, running, atCap, onExpand, onSelect, labe
           )}
         </>
       )}
+    </aside>
+  );
+}
+
+// A transaction, website, service or payment from the lookup: what the lookup said about it.
+function PlainDetails({ a, degree }) {
+  const rows = Object.entries(a.details ?? {}).filter(([, v]) => v != null && typeof v !== "object").slice(0, 12);
+  return (
+    <aside className="card details" aria-label="Node details">
+      <h2>{KIND_STYLE[a.styleKey]?.label ?? "Node"}</h2>
+      <p className="mono small">{a.label}</p>
+      {a.listed?.length > 0 && <p className="notice notice-error small">Listed: {a.listed.join(", ")}</p>}
+      <dl className="grid-dl small">
+        <dt>Links</dt><dd>{degree.toLocaleString()}</dd>
+        {rows.flatMap(([k, v]) => [<dt key={`k${k}`}>{k.replace(/_/g, " ")}</dt>, <dd key={`v${k}`}>{String(v)}</dd>])}
+      </dl>
+      <p className="small muted">Only addresses can be expanded. The panel on the right has this item's full details and actions.</p>
     </aside>
   );
 }

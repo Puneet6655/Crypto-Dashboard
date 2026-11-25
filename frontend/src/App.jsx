@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "./auth/AuthContext.jsx";
 import { CasesProvider } from "./cases/CasesContext.jsx";
 import { ToastProvider } from "./components/Toasts.jsx";
@@ -30,8 +30,6 @@ import "./investigate/investigate.css";
 
 document.documentElement.classList.add("neu");
 
-// Graph explorer pulls in WebGL drawing (Sigma) and a layout worker: load it only when opened.
-const GraphExplorerPage = lazy(() => import("./pages/GraphExplorerPage.jsx"));
 // Optional animated overview banner, kept in its own files. Only shown at #/overview.
 const OverviewHero = lazy(() => import("./overview/OverviewHero.jsx"));
 
@@ -92,6 +90,17 @@ function Shell() {
     || (known && (!known.role || can(known.role)));
   const page = allowed ? route.page : "investigate";
 
+  // The graph explorer lives on the Investigate page now. Old links (#/graph/<chain>/<addresses>, from cases,
+  // alerts or bookmarks) look the first address up there and expand the others with it.
+  const graphLink = route.page === "graph" ? `${route.params[0] ?? ""}/${route.params[1] ?? ""}` : "";
+  useEffect(() => {
+    if (!graphLink) return;
+    const chain = route.params[0];
+    const list = decodeURIComponent(route.params[1] ?? "").split(/[\s,]+/).filter(Boolean);
+    if (chain && list.length) investigation.openInExplorer(chain, list);
+    navigate("/investigate");
+  }, [graphLink]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // From a case: look the item up live and switch to the Investigate page.
   function investigate(inputType, value, mode, method) {
     investigation.investigateLive(inputType, value, mode, method);
@@ -115,11 +124,6 @@ function Shell() {
             </Suspense>
           )}
           {page === "investigate" && <InvestigatePage investigation={investigation} />}
-          {page === "graph" && (
-            <Suspense fallback=<div className="card state">Loading the graph explorer...</div>>
-              <GraphExplorerPage route={route} />
-            </Suspense>
-          )}
           {page === "cases" && <CasesPage caseId={route.params[0]} onInvestigate={investigate} />}
           {page === "alerts" && <AlertsPage live={live} onInvestigate={investigate} />}
           {page === "x402" && <X402Page onInvestigate={investigate} />}
