@@ -18,7 +18,7 @@ As of 25 November 2026 (Week 6 of 8 in the project plan). Branch `main`.
 | M10 | Feature pipeline and Random Forest | Done | `training/`, [ML_PIPELINE.md](ML_PIPELINE.md) |
 | M11 | XGBoost and fair comparison | Done | `training/model_registry.py` |
 | M12 | SHAP and comparison panel | Done, plus live scoring of every Bitcoin lookup (XGBoost, Random Forest switch) and 2026 thresholds | `app/ml/`, `investigate/RiskPanel.jsx`, `pages/ModelsPage.jsx` |
-| M13 | x402 mode | Done in a changed form: x402 payment rules, x402 payments page and live monitor on real Base data (the research team's records did not arrive). `x402_reconcile` is still "planned" | `app/x402/`, `pages/X402Page.jsx` |
+| M13 | x402 mode | Done: x402 payment rules, x402 payments page and live monitor on real Base data | `app/x402/`, `pages/X402Page.jsx` |
 | M14 | AI Analyst | Done, runs locally: Ollama (qwen3:8b) by default, optional Claude CLI; answer checks against the case facts. Not online by the supervisor's decision | `app/analyst/`, `components/AnalystPanel.jsx` |
 | M15 | Evidence export, scorecard adapter | Export done (JSON and Markdown). The scorecard adapter waits on the research team; "not configured" is shown | `services/evidenceExport.js` |
 | M16 | Tests, deployment, README, demo | In progress: 253 offline backend tests and 5 frontend tests; deployed on Vercel + Railway; docs done. Demo video and final report left | `backend/tests/`, [DEPLOY.md](DEPLOY.md) |
